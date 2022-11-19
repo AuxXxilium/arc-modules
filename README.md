@@ -1,2 +1,2 @@
-# arpl-modules
-Binary modules for ARPL
+# arc-modules
+Binary modules for ARC
