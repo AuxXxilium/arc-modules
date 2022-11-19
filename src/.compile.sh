@@ -13,7 +13,7 @@ if [ ! -d "${PWD}/${MODULE}" ]; then
   exit 1
 fi
 
-curl -sLO "https://github.com/fbelavenuto/arpl/raw/main/PLATFORMS"
+curl -sLO "https://github.com/AuxXxilium/arc/raw/main/PLATFORMS"
 
 while read PLATFORM KVER; do
   DIR="${KVER:0:1}.x"
