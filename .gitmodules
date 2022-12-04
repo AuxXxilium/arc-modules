@@ -1,3 +1,0 @@
-[submodule "src/igc/4.x"]
-	path = src/igc/4.x
-	url = ../../jim3ma/synology-igc.git
