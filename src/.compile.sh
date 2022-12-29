@@ -21,10 +21,10 @@ function compile-module() {
   done < PLATFORMS
 }
 
-if [ -f ../../arpl/PLATFORMS ]; then
-  cp ../../arpl/PLATFORMS PLATFORMS
+if [ -f ../../arc/PLATFORMS ]; then
+  cp ../../arc/PLATFORMS PLATFORMS
 else
-  curl -sLO "https://github.com/fbelavenuto/arpl/raw/main/PLATFORMS"
+  curl -sLO "https://github.com/AuxXxilium/arc-modules/raw/main/PLATFORMS"
 fi
 
 if [ $# -ge 1 ]; then
