@@ -19,6 +19,8 @@ mv14xx.ko
 nfs.ko
 nfsv3.ko
 phy_alloc_0810_x64.ko
+r8125.ko
+r8168.ko
 sg.ko
 sha256_generic.ko
 sunrpc.ko

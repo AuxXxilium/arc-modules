@@ -19,6 +19,7 @@ nf_nat.ko
 nfs.ko
 nfsv3.ko
 phy_alloc.ko
+r8125.ko
 r8168.ko
 sha256_generic.ko
 sunrpc.ko
