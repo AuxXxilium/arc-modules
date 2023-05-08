@@ -172,6 +172,22 @@ jobs:
           echo "pack firmware"
           PARTY3RD_PATH="${{ github.workspace }}/firmware"
 
+          echo "extract all modules"
+          for F in ./modules/*.tgz; do mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"; done
+          
+          echo "get firmware"
+          SOURCE=/tmp/linux-firmware
+          git clone https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git ${SOURCE}
+          while read L; do
+            FN="${SOURCE}/${L}"
+            if [ -e "${FN}" ]; then
+              mkdir -p "`dirname firmware/${L}`"
+              cp "${FN}" "firmware/${L}"
+            else
+              echo "Missing ${FN}"
+            fi
+          done < <(find ./modules -name \*.ko -exec sh -c '/sbin/modinfo {} | grep ^firmware' \; | awk '{print$2}')
+
           tar caf firmware.tgz -C ${PARTY3RD_PATH} .
 
       - name: Upload to Artifacts
