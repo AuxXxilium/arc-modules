@@ -230,7 +230,7 @@ jobs:
             FN="${SOURCE}/${L}"
             if [ -e "${FN}" ]; then
               mkdir -p "`dirname firmware/${L}`"
-              cp "${FN}" "firmware/${L}"
+              cp -f "${FN}" "firmware/${L}"
             else
               echo "Missing ${FN}"
             fi
