@@ -179,14 +179,13 @@ jobs:
           SOURCE=/tmp/linux-firmware
           git clone https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git ${SOURCE}
           while read L; do
-            FN="${SOURCE}/${L}"
-            if [ -e "${FN}" ]; then
+            if [ -e "${SOURCE}/${L}" ]; then
               mkdir -p "`dirname firmware/${L}`"
-              cp "${FN}" "firmware/${L}"
+              cp -f "${SOURCE}/${L}" "firmware/${L}"
             else
-              echo "Missing ${FN}"
+              [ -e "firmware/${L}" ] && echo "Used thirdparty ${L}" || echo "Missing ${L}"
             fi
-          done < <(find ./modules -name \*.ko -exec sh -c '/sbin/modinfo {} | grep ^firmware' \; | awk '{print$2}')
+          done < <(find ./modules -name \*.ko -exec sh -c '/sbin/modinfo {} | grep ^firmware' \; | awk '{print $2}')
 
           tar caf firmware.tgz -C ${PARTY3RD_PATH} .
 
