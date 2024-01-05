@@ -15740,6 +15740,7 @@ static struct scsi_host_template mpt2sas_driver_template = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
 	.cmd_size           = sizeof(struct scsiio_tracker),
 #endif
+	.syno_port_type			= SYNO_PORT_TYPE_SATA,
 };
 
 /* raid transport support for SAS 2.0 HBA devices */
@@ -15808,6 +15809,7 @@ static struct scsi_host_template mpt3sas_driver_template = {
 	.mq_poll			= mpt3sas_blk_mq_poll,
 #endif
 #endif
+	.syno_port_type			= SYNO_PORT_TYPE_SATA,
 };
 
 /* raid transport support for SAS 3.0 HBA devices */
