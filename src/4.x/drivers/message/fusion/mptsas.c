@@ -5382,6 +5382,7 @@ static struct pci_driver mptsas_driver = {
 	.probe		= mptsas_probe,
 	.remove		= mptsas_remove,
 	.shutdown	= mptsas_shutdown,
+	.syno_port_type = SYNO_PORT_TYPE_SATA,
 #ifdef CONFIG_PM
 	.suspend	= mptscsih_suspend,
 	.resume		= mptscsih_resume,
