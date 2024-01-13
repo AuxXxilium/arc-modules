@@ -23,8 +23,8 @@ on:
         description: 'format %y.%-m.$i or auto'
         required: false
         type: string
-      prerelease:
-        description: "pre release"
+      module:
+        description: "CONFIG_MODULE=m"
         default: false
         type: boolean
 
@@ -48,9 +48,9 @@ jobs:
           - version: 7.1
             platform: denverton
             parm: "4.4.180"
-          #- version: 7.1
-          #  platform: epyc7002
-          #  parm: "5.10.55"
+          - version: 7.1
+            platform: epyc7002
+            parm: "5.10.55"
           - version: 7.1 
             platform: geminilake
             parm: "4.4.180"
@@ -176,7 +176,9 @@ jobs:
           cd /source/input
           [ -z "`grep 'env.mak' Makefile`" ] && sed -i '1 i include /env.mak' Makefile
 
-          if [ -f "defines.${{ matrix.platform }}" ]; then
+          if [ -n "${{ inputs.module }}" ]; then 
+            PARMS+="${{ inputs.module }}"
+          elif [ -f "defines.${{ matrix.platform }}" ]; then
             PARMS+=" `cat "defines.${{ matrix.platform }}" | xargs`"
           else
             echo "[E] ${{ matrix.platform }}-${{ matrix.version }}"
