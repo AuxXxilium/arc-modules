@@ -138,7 +138,6 @@ jobs:
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}
           path: |
             ${{ github.workspace }}/source/*.tgz
 
@@ -157,6 +156,9 @@ jobs:
       - name: Firmware
         run: |
           mkdir -p firmware
+
+          # Unzip
+          unzip -o ./modules/*.zip -d ./modules/
 
           echo "copy 3rd modules"
           MODULES_PATH="${{ github.workspace }}/modules/firmware"
@@ -182,7 +184,7 @@ jobs:
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: firmware
+          name: modules
           path: |
             firmware.tgz
 
