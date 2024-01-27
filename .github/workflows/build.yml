@@ -161,6 +161,8 @@ jobs:
           echo "copy 3rd modules"
           MODULES_PATH="${{ github.workspace }}/modules/firmware"
           cp -rf ${MODULES_PATH}/* firmware/
+          
+          ls ./modules
 
           echo "extract all modules"
           for F in ./modules/*.tgz; do mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"; done
