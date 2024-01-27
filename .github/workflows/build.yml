@@ -135,15 +135,16 @@ jobs:
             tar caf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
           fi
 
+          if [ "${{ matrix.platform }}" = "epyc7002" ]; then
+            UPNAME="${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
+          else
+            UPNAME="${{ matrix.platform }}-${{ matrix.parm }}"
+          fi
+
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: |
-            if [ "${{ matrix.platform }}" = "epyc7002" ]; then
-              ${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}
-            else
-              ${{ matrix.platform }}-${{ matrix.parm }}
-            fi
+          name: ${UPNAME}
           path: |
             ${{ github.workspace }}/source/*.tgz
 
