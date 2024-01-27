@@ -138,6 +138,7 @@ jobs:
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
         with:
+          name: ${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}
           path: |
             ${{ github.workspace }}/source/*.tgz
 
