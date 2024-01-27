@@ -140,11 +140,12 @@ jobs:
           else
             UPNAME="${{ matrix.platform }}-${{ matrix.parm }}"
           fi
+          echo "UPNAME=${UPNAME}" >> $GITHUB_ENV
 
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${UPNAME}
+          name: ${{ env.UPNAME }}
           path: |
             ${{ github.workspace }}/source/*.tgz
 
