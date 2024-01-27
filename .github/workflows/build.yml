@@ -138,7 +138,12 @@ jobs:
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}
+          name: |
+            if [ "${{ matrix.platform }}" = "epyc7002" ]; then
+              ${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}
+            else
+              ${{ matrix.platform }}-${{ matrix.parm }}
+            fi
           path: |
             ${{ github.workspace }}/source/*.tgz
 
@@ -165,7 +170,7 @@ jobs:
           ls ./modules
 
           echo "extract all modules"
-          for F in ./modules/*.tgz; do mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"; done
+          for F in ./modules/*/*.tgz; do mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"; done
           
           echo "get firmware"
           SOURCE=/tmp/linux-firmware
