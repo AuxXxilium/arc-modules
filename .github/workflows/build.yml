@@ -158,9 +158,6 @@ jobs:
         run: |
           mkdir -p firmware
 
-          # Unzip
-          unzip -o ./modules/*.zip -d ./modules/
-
           echo "copy 3rd modules"
           MODULES_PATH="${{ github.workspace }}/modules/firmware"
           cp -rf ${MODULES_PATH}/* firmware/
