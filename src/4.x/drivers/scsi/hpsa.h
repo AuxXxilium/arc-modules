@@ -153,6 +153,8 @@ struct bmic_controller_parameters {
 };
 #pragma pack()
 
+#define HPSA_NVRAM_FLAG_HBA (1 << 3)
+
 struct ctlr_info {
 	int	ctlr;
 	char	devname[8];
@@ -178,6 +180,7 @@ struct ctlr_info {
 	unsigned int msi_vector;
 	int intr_mode; /* either PERF_MODE_INT or SIMPLE_MODE_INT */
 	struct access_method access;
+	bool nvram_hba_mode_enabled;
 
 	/* queue and queue Info */
 	unsigned int Qdepth;
