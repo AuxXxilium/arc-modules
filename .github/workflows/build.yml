@@ -255,7 +255,7 @@ jobs:
         run: |
           zip -9 modules.zip -j output/*
           sha256sum modules.zip >checksum.sha256
-          mv ./output/*.tgz ./output/*.modules
+          for i in ./output/*.tgz; do mv $i ${i/.tgz/.modules}; done
 
       - name: Release
         if: success() && env.VERSION != ''
