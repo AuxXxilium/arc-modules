@@ -255,6 +255,7 @@ jobs:
         run: |
           zip -9 modules.zip -j output/*
           sha256sum modules.zip >checksum.sha256
+          mv ./output/*.tgz ./output/*.modules
 
       - name: Release
         if: success() && env.VERSION != ''
@@ -268,5 +269,5 @@ jobs:
             ${{ steps.Changelog.outputs.changelog }}
           artifacts: |
               modules.zip
-              ./output/*.tgz
+              ./output/*.modules
               checksum.sha256
