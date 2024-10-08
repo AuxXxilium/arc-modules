@@ -127,23 +127,6 @@ jobs:
           git config --global user.name "AuxXxilium"
           sudo timedatectl set-timezone "Europe/Berlin" 
 
-      - name: Calculate Version
-        run: |
-          # Calculate Version
-          VERSION=""
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION="`date +'%y.%m.%d'`"
-          fi
-
-          if [ -n "${VERSION}" ]; then
-            # Modify Source File
-            echo "Version: ${VERSION}"
-            echo "${VERSION}" >VERSION
-            echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          fi
-
       - name: Tar to Artifacts
         run: |
           if [ ! -d "${{ github.workspace }}/source/output" ]; then
@@ -161,9 +144,11 @@ jobs:
           [ -d "${MODULES_PATH}" ] && cp -Rvf "${MODULES_PATH}/." "${{ github.workspace }}/source/output"
 
           if [ "${{ matrix.platform }}" = "epyc7002" ]; then
+            VERSION="`date +'%y.%m.%d'`"
             echo "${VERSION}" >"${{ github.workspace }}/source/output/VERSION"
             tar -zcf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
           else
+            VERSION="`date +'%y.%m.%d'`"
             echo "${VERSION}" >"${{ github.workspace }}/source/output/VERSION"
             tar -zcf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
           fi
@@ -242,7 +227,7 @@ jobs:
         run: |
           git config --global user.email "info@auxxxilium.tech"
           git config --global user.name "AuxXxilium"
-          sudo timedatectl set-timezone "Europe/Berlin" 
+          sudo timedatectl set-timezone "Europe/Berlin"
 
       - name: Download from Artifacts
         uses: actions/download-artifact@v4
@@ -250,6 +235,24 @@ jobs:
           path: output
           pattern: modules-*
           merge-multiple: true
+
+      - name: Calculate Version
+        run: |
+          # Calculate Version
+          VERSION=""
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="`date +'%y.%m.%d'`"
+          fi
+
+          if [ -n "${VERSION}" ]; then
+            # Modify Source File
+            echo "Version: ${VERSION}"
+            echo "${VERSION}" >VERSION
+            echo "${VERSION}" >"./output/VERSION"
+            echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          fi
 
       - name: Zip Modules
         run: |
