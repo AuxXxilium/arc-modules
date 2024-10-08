@@ -141,7 +141,6 @@ jobs:
             # Modify Source File
             echo "Version: ${VERSION}"
             echo "${VERSION}" >VERSION
-            echo "${VERSION}" >"./output/VERSION"
             echo "VERSION=${VERSION}" >> $GITHUB_ENV
           fi
 
