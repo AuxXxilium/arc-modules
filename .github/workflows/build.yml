@@ -252,14 +252,12 @@ jobs:
           merge-multiple: true
 
       - name: Zip Modules
-        if: success() && env.VERSION != ''
         run: |
           zip -9 modules.zip -j output/*
           sha256sum modules.zip >checksum.sha256
           for i in ./output/*.tgz; do mv $i ${i/.tgz/.modules}; done
 
       - name: Release
-        if: success() && env.VERSION != ''
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ env.VERSION }}
