@@ -192,7 +192,7 @@ jobs:
             while read -r L; do
               if [ -e "${SOURCE}/${L}" ]; then
                 mkdir -p "`dirname firmware/${L}`"
-                cp "${SOURCE}/${L}" "firmware/${L}"
+                cp -f "${SOURCE}/${L}" "firmware/${L}"
               else
                 [ -e "firmware/${L}" ] && echo "Used modules ${L}" || echo "Missing ${L}"
               fi
