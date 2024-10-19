@@ -256,8 +256,7 @@ jobs:
 
       - name: Zip Modules
         run: |
-          zip -9 modules.zip -j output/*
-          for i in ./output/*.tgz; do mv $i ${i/.tgz/.modules}; done
+          zip -9 modules.zip -j output/*.tgz
 
       - name: Release
         uses: ncipollo/release-action@v1
@@ -270,4 +269,4 @@ jobs:
             ${{ steps.Changelog.outputs.changelog }}
           artifacts: |
               modules.zip
-              ./output/*.modules
+              ./output/*.tgz
