@@ -256,7 +256,7 @@ jobs:
 
       - name: Zip Modules
         run: |
-          zip -9 modules.zip -j output/*.tgz
+          zip -9j modules-${{ env.VERSION }}.zip output/*.tgz
 
       - name: Release
         uses: ncipollo/release-action@v1
@@ -268,5 +268,5 @@ jobs:
           body: |
             ${{ steps.Changelog.outputs.changelog }}
           artifacts: |
-              modules.zip
+              modules-*.zip
               ./output/*.tgz
