@@ -137,7 +137,7 @@ jobs:
             chmod a+rw -R "${{ github.workspace }}/source/output"
           fi
 
-          if [ "${{ matrix.platform }}" = "epyc7002" ]; then
+          if [ "${{ matrix.platform }}" = "epyc7002" ] || [ "${{ matrix.platform }}" = "v1000nk" ]; then
             MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
           else
             MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.parm }}"
@@ -146,7 +146,7 @@ jobs:
           echo "copy 3rd modules"
           [ -d "${MODULES_PATH}" ] && cp -Rvf "${MODULES_PATH}/." "${{ github.workspace }}/source/output"
 
-          if [ "${{ matrix.platform }}" = "epyc7002" ]; then
+          if [ "${{ matrix.platform }}" = "epyc7002" ] || [ "${{ matrix.platform }}" = "v1000nk" ]; then
             VERSION="`date +'%y.%m.%d'`"
             echo "${VERSION}" >"${{ github.workspace }}/source/output/VERSION"
             tar -zcf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
