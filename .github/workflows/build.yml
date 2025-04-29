@@ -111,6 +111,9 @@ jobs:
           - version: 7.2
             platform: v1000
             parm: "4.4.302"
+          - version: 7.2
+            platform: v1000nk
+            parm: "5.10.55"
           #- version: 7.2
           #  platform: kvmx64
           #  parm: "4.4.302"
