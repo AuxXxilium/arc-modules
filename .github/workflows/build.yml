@@ -103,11 +103,17 @@ jobs:
             platform: geminilake
             parm: "4.4.302"
           - version: 7.2
+            platform: geminilakenk
+            parm: "5.10.55"
+          - version: 7.2
             platform: purley
             parm: "4.4.302"
           - version: 7.2
             platform: r1000
             parm: "4.4.302"
+          - version: 7.2
+            platform: r1000nk
+            parm: "5.10.55"
           - version: 7.2
             platform: v1000
             parm: "4.4.302"
@@ -137,7 +143,7 @@ jobs:
             chmod a+rw -R "${{ github.workspace }}/source/output"
           fi
 
-          if [ "${{ matrix.platform }}" = "epyc7002" ] || [ "${{ matrix.platform }}" = "v1000nk" ]; then
+          if [[ "${{ matrix.parm }}" == 5* ]]; then
             MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
           else
             MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.parm }}"
@@ -146,7 +152,7 @@ jobs:
           echo "copy 3rd modules"
           [ -d "${MODULES_PATH}" ] && cp -Rvf "${MODULES_PATH}/." "${{ github.workspace }}/source/output"
 
-          if [ "${{ matrix.platform }}" = "epyc7002" ] || [ "${{ matrix.platform }}" = "v1000nk" ]; then
+          if [[ "${{ matrix.parm }}" == 5* ]]; then
             VERSION="`date +'%y.%m.%d'`"
             echo "${VERSION}" >"${{ github.workspace }}/source/output/VERSION"
             tar -zcf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
@@ -195,7 +201,9 @@ jobs:
             while read -r L; do
               if [ -e "${SOURCE}/${L}" ]; then
                 mkdir -p "`dirname firmware/${L}`"
-                cp -f "${SOURCE}/${L}" "firmware/${L}"
+                if [ ! -e "firmware/${L}" ]; then
+                  cp -f "${SOURCE}/${L}" "firmware/${L}"
+                fi
               else
                 [ -e "firmware/${L}" ] && echo "Used modules ${L}" || echo "Missing ${L}"
               fi
