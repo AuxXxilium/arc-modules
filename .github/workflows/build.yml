@@ -14,7 +14,7 @@
 #   - version: "7.2"
 #     platform: "broadwell"
 
-name: Build extended Modules
+name: Build Modules
 
 on:
   workflow_dispatch:
@@ -257,7 +257,7 @@ jobs:
             echo "VERSION=${VERSION}" >> $GITHUB_ENV
           fi
 
-      - name: Release extended Modules
+      - name: Release Modules
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ env.VERSION }}
