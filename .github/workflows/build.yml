@@ -14,7 +14,7 @@
 #   - version: "7.2"
 #     platform: "broadwell"
 
-name: Build Modules
+name: Build extended Modules
 
 on:
   workflow_dispatch:
@@ -23,17 +23,9 @@ on:
         description: "version"
         required: false
         type: string
-      latest:
-        description: "latest"
-        default: true
-        type: boolean
-      prerelease:
-        description: "pre release"
-        default: false
-        type: boolean
       firmware:
         description: "firmware"
-        default: false
+        default: true
         type: boolean
 
 jobs:
@@ -265,19 +257,16 @@ jobs:
             echo "VERSION=${VERSION}" >> $GITHUB_ENV
           fi
 
-      - name: Zip Modules
-        run: |
-          zip -9j modules-${{ env.VERSION }}.zip output/*.tgz VERSION
-
-      - name: Release
+      - name: Release extended Modules
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ env.VERSION }}
-          makeLatest: ${{ inputs.latest }}
-          prerelease: ${{ inputs.prerelease }}
+          makeLatest: true
           allowUpdates: true
+          owner: AuxXxilium
+          repo: arc-modules-ex
+          token: ${{ secrets.BUILD_TOKEN }}
           body: |
             ${{ steps.Changelog.outputs.changelog }}
           artifacts: |
-              modules-*.zip
               ./output/*.tgz
