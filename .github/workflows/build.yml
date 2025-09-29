@@ -228,12 +228,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Changelog
-        uses: Bullrich/generate-release-changelog@master
-        id: Changelog
-        env:
-          REPO: ${{ github.repository }}
-
       - name: Init Env
         run: |
           git config --global user.email "info@auxxxilium.tech"
@@ -272,7 +266,7 @@ jobs:
 
       - name: Add modules.yml to Output
         run: |
-          cp modules.yml ./output/
+          cp modules.yml ./output/modules-${{ env.VERSION }}.yml
 
       - name: Zip Modules
         run: |
@@ -286,7 +280,13 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           allowUpdates: true
           body: |
-            ${{ steps.Changelog.outputs.changelog }}
+            ## Included Modules
+
+            The `Modules list` file contains a detailed list of all included modules in this release. You can download it directly using the link below:
+
+            [Modules list](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/modules-${{ env.VERSION }}.yml)
+
+            For more details, refer to the release notes or the repository documentation.
           artifacts: |
               modules-*.zip
               ./output/*.tgz
