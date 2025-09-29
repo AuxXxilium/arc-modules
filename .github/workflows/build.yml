@@ -265,6 +265,15 @@ jobs:
             echo "VERSION=${VERSION}" >> $GITHUB_ENV
           fi
 
+      - name: Run list.sh to Update Modules List
+        run: |
+          chmod +x ./list.sh
+          ./list.sh
+
+      - name: Add modules.yml to Output
+        run: |
+          cp modules.yml ./output/
+
       - name: Zip Modules
         run: |
           zip -9j modules-${{ env.VERSION }}.zip output/*.tgz VERSION
@@ -281,3 +290,4 @@ jobs:
           artifacts: |
               modules-*.zip
               ./output/*.tgz
+              ./output/modules.yml
