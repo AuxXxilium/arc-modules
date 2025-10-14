@@ -66,9 +66,6 @@ jobs:
           - version: 7.1
             platform: v1000
             parm: "4.4.180"
-          #- version: 7.1
-          #  platform: kvmx64
-          #  parm: "4.4.180"
 
           - version: 7.2
             platform: apollolake
@@ -112,9 +109,19 @@ jobs:
           - version: 7.2
             platform: v1000nk
             parm: "5.10.55"
-          #- version: 7.2
-          #  platform: kvmx64
-          #  parm: "4.4.302"
+
+          - version: 7.3
+            platform: epyc7002
+            parm: "5.10.55"
+          - version: 7.3
+            platform: geminilakenk
+            parm: "5.10.55"
+          - version: 7.3
+            platform: r1000nk
+            parm: "5.10.55"
+          - version: 7.3
+            platform: v1000nk
+            parm: "5.10.55"
 
     runs-on: ubuntu-latest
 
