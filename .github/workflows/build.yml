@@ -200,22 +200,27 @@ jobs:
 
           if [ "${{ inputs.firmware }}" == "true" ]; then
             echo "extract all modules"
-            for F in ./output/*.tgz; do mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"; done
-
+            for F in ./output/*.tgz; do
+              mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"
+            done
+            
             echo "get firmware"
             SOURCE=/tmp/linux-firmware
             git clone https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git ${SOURCE}
-            while read -r L; do
-              if [ -e "${SOURCE}/${L}" ]; then
-                mkdir -p "`dirname firmware/${L}`"
-                if [ ! -e "firmware/${L}" ]; then
-                  cp -f "${SOURCE}/${L}" "firmware/${L}"
-                  echo "${F}: ${L}"
+            find ./output -name "*.ko" | while read -r KO_FILE; do
+              KO_NAME=$(basename "${KO_FILE}") # Extract only the .ko file name
+              while read -r L; do
+                if [ -e "${SOURCE}/${L}" ]; then
+                  mkdir -p "$(dirname firmware/${L})"
+                  if [ ! -e "firmware/${L}" ]; then
+                    cp -f "${SOURCE}/${L}" "firmware/${L}"
+                    echo "${KO_NAME}: ${L}"
+                  fi
+                else
+                  [ -e "firmware/${L}" ] && echo "${KO_NAME}: ${L}" || echo "${KO_NAME}: missing ${L}"
                 fi
-              else
-                [ -e "firmware/${L}" ] && echo "${F}: ${L}" || echo "${F}: missing ${L}"
-              fi
-            done < <(find ./output -name \*.ko -exec sh -c '/sbin/modinfo {} | grep ^firmware' \; | awk '{print $2}')
+              done < <(/sbin/modinfo "${KO_FILE}" | grep ^firmware | awk '{print $2}')
+            done
           fi
 
           tar -zcf firmware.tgz -C firmware .
