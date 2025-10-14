@@ -74,9 +74,6 @@ jobs:
           - version: 7.1
             platform: v1000
             parm: "4.4.180"
-          #- version: 7.1
-          #  platform: kvmx64
-          #  parm: "4.4.180"
 
           - version: 7.2
             platform: apollolake
@@ -120,9 +117,19 @@ jobs:
           - version: 7.2
             platform: v1000nk
             parm: "5.10.55"
-          #- version: 7.2
-          #  platform: kvmx64
-          #  parm: "4.4.302"
+
+          - version: 7.3
+            platform: epyc7002
+            parm: "5.10.55"
+          - version: 7.3
+            platform: geminilakenk
+            parm: "5.10.55"
+          - version: 7.3
+            platform: r1000nk
+            parm: "5.10.55"
+          - version: 7.3
+            platform: v1000nk
+            parm: "5.10.55"
 
     runs-on: ubuntu-latest
 
@@ -228,12 +235,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Changelog
-        uses: Bullrich/generate-release-changelog@master
-        id: Changelog
-        env:
-          REPO: ${{ github.repository }}
-
       - name: Init Env
         run: |
           git config --global user.email "info@auxxxilium.tech"
@@ -265,6 +266,15 @@ jobs:
             echo "VERSION=${VERSION}" >> $GITHUB_ENV
           fi
 
+      - name: Run list.sh to Update Modules List
+        run: |
+          chmod +x ./list.sh
+          ./list.sh
+
+      - name: Add modules.yml to Output
+        run: |
+          cp modules.yml ./output/modules-${{ env.VERSION }}.yml
+
       - name: Zip Modules
         run: |
           zip -9j modules-${{ env.VERSION }}.zip output/*.tgz VERSION
@@ -277,7 +287,14 @@ jobs:
           prerelease: ${{ inputs.prerelease }}
           allowUpdates: true
           body: |
-            ${{ steps.Changelog.outputs.changelog }}
+            ## Included Modules
+
+            The `Modules list` file contains a detailed list of all included modules in this release. You can download it directly using the link below:
+
+            [Modules list](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/modules-${{ env.VERSION }}.yml)
+
+            For more details, refer to the release notes or the repository documentation.
           artifacts: |
               modules-*.zip
               ./output/*.tgz
+              ./output/modules-*.yml
