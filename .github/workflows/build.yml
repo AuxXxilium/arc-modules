@@ -267,7 +267,6 @@ jobs:
           if [ -n "${VERSION}" ]; then
             # Modify Source File
             echo "Version: ${VERSION}"
-            echo "${VERSION}" >VERSION
             echo "${VERSION}" >"./output/VERSION"
             echo "VERSION=${VERSION}" >> $GITHUB_ENV
           fi
@@ -283,7 +282,7 @@ jobs:
 
       - name: Zip Modules
         run: |
-          zip -9j modules-${{ env.VERSION }}.zip output/*.tgz VERSION
+          zip -9j modules-${{ env.VERSION }}.zip output/*.tgz output/VERSION
 
       - name: Release
         uses: ncipollo/release-action@v1
