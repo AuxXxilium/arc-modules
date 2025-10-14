@@ -210,9 +210,10 @@ jobs:
                 mkdir -p "`dirname firmware/${L}`"
                 if [ ! -e "firmware/${L}" ]; then
                   cp -f "${SOURCE}/${L}" "firmware/${L}"
+                  echo "${F}: ${L}"
                 fi
               else
-                [ -e "firmware/${L}" ] && echo "Used modules ${L}" || echo "Missing ${L}"
+                [ -e "firmware/${L}" ] && echo "${F}: ${L}" || echo "${F}: missing ${L}"
               fi
             done < <(find ./output -name \*.ko -exec sh -c '/sbin/modinfo {} | grep ^firmware' \; | awk '{print $2}')
           fi
