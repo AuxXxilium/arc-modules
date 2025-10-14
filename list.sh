@@ -16,7 +16,7 @@ for folder in ${start}/*; do
     for F in $(ls ${folder}/*.ko); do
       X=$(basename ${F})
       M=$(basename ${F} | sed 's/\.[^.]*$//')
-      DESC=$(modinfo ${F} | awk -F':' '/description:/{ print $2}' | awk '{sub(/^[ ]+/,""); print}')
+      DESC=$(modinfo ${F} | awk -F':' '/description:/{ print $2}' | awk '{sub(/^[ ]+/,""); print}' | sed -E 's/\(Compiled by RR for DSM\)//g')
       [ -z "${DESC}" ] && DESC="${X}"
       echo "${M} \"${DESC}\""
       echo "* ${M} \"${DESC}\"" >>${start}/modules.yml
