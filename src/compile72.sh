@@ -11,6 +11,16 @@ while read PLATFORM KVER; do
   [ ! -d "${PWD}/${DIR}" ] && continue
   mkdir -p "/tmp/${PLATFORM}-${KVER}"
 
+  # Ensure the defines.x file is respected
+  DEFINES_FILE="defines.${PLATFORM}"
+  if [ -f "${PWD}/${DIR}/${DEFINES_FILE}" ]; then
+    cp "${PWD}/${DIR}/${DEFINES_FILE}" "${PWD}/${DIR}/.config"
+    # Regenerate the .config file to apply changes
+    make -C "${PWD}/${DIR}" oldconfig
+  else
+    echo "Warning: ${DEFINES_FILE} not found for ${PLATFORM}"
+  fi
+
   # Disable specific modules for certain platforms
   case "${PLATFORM}" in
     broadwell|broadwellnk)
@@ -59,4 +69,4 @@ while read PLATFORM KVER; do
     [[ -f ${PWD}/../${PLATFORM}-${KVER}/i2c-algo-bit.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko
   done
   rm -rf /tmp/${PLATFORM}-${KVER}
-done < PLATFORMS71
+done < PLATFORMS72
