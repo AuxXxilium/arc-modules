@@ -11,28 +11,6 @@ while read PLATFORM KVER; do
   [ ! -d "${PWD}/${DIR}" ] && continue
   mkdir -p "/tmp/${PLATFORM}-${KVER}"
 
-  # Ensure the defines.x file is respected
-  DEFINES_FILE="defines.${PLATFORM}"
-  if [ -f "${PWD}/${DIR}/${DEFINES_FILE}" ]; then
-    cp "${PWD}/${DIR}/${DEFINES_FILE}" "${PWD}/${DIR}/.config"
-    # Regenerate the .config file to apply changes
-    make -C "${PWD}/${DIR}" oldconfig
-  else
-    echo "Warning: ${DEFINES_FILE} not found for ${PLATFORM}"
-  fi
-
-  # Disable specific modules for certain platforms
-  case "${PLATFORM}" in
-    broadwell|broadwellnk)
-      echo "Disabling scsi_transport_sas for ${PLATFORM}"
-      if grep -q "CONFIG_SCSI_SAS" "${PWD}/${DIR}/.config"; then
-        sed -i 's/^CONFIG_SCSI_SAS=.*/CONFIG_SCSI_SAS=n/' "${PWD}/${DIR}/.config"
-      else
-        echo "CONFIG_SCSI_SAS=n" >> "${PWD}/${DIR}/.config"
-      fi
-      ;;
-  esac
-
   # Prepare the Docker run parameters
   runparam=$(echo "-u `id -u` --rm -t -v "${PWD}/${DIR}":/input -v "/tmp/${PLATFORM}-${KVER}":/output \
     fbelavenuto/syno-compiler:${TOOLKIT_VER} compile-module ${PLATFORM}")
