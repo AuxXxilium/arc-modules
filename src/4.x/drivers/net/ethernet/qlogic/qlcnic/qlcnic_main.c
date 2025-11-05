@@ -120,6 +120,7 @@ static const struct pci_device_id qlcnic_pci_tbl[] = {
 
 MODULE_DEVICE_TABLE(pci, qlcnic_pci_tbl);
 
+
 inline void qlcnic_update_cmd_producer(struct qlcnic_host_tx_ring *tx_ring)
 {
 	writel(tx_ring->producer, tx_ring->crb_cmd_producer);
@@ -1536,6 +1537,7 @@ int qlcnic_set_default_offload_settings(struct qlcnic_adapter *adapter)
 	return 0;
 }
 
+
 static int
 qlcnic_reset_eswitch_config(struct qlcnic_adapter *adapter,
 			struct qlcnic_npar_info *npar, int pci_func)
@@ -2452,6 +2454,7 @@ static void qlcnic_reset_api_lock(struct qlcnic_adapter *adapter)
 	qlcnic_api_unlock(adapter);
 }
 
+
 static int
 qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
@@ -2503,6 +2506,7 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		qlcnic_sriov_vf_register_map(ahw);
 		break;
 	default:
+		err = -EINVAL;
 		goto err_out_free_hw_res;
 	}
 
@@ -2702,6 +2706,7 @@ err_out_free_hw_res:
 	kfree(ahw);
 
 err_out_free_res:
+	pci_disable_pcie_error_reporting(pdev);
 	pci_release_regions(pdev);
 
 err_out_disable_pdev:
@@ -3820,6 +3825,7 @@ void qlcnic_fw_poll_work(struct work_struct *work)
 	if (test_bit(__QLCNIC_RESETTING, &adapter->state))
 		goto reschedule;
 
+
 	if (qlcnic_check_health(adapter))
 		return;
 
@@ -4002,6 +4008,7 @@ static void qlcnic_io_resume(struct pci_dev *pdev)
 	else
 		dev_err(&pdev->dev, "AER resume handler not registered.\n");
 }
+
 
 static int
 qlcnicvf_start_firmware(struct qlcnic_adapter *adapter)

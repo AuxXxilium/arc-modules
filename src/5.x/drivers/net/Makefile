@@ -17,7 +17,6 @@
 #obj-$(CONFIG_MACVLAN) += macvlan.o
 #obj-$(CONFIG_MACVTAP) += macvtap.o
 obj-$(CONFIG_MII) += mii.o
-obj-$(CONFIG_MDIO) += mdio.o
 #obj-$(CONFIG_NET) += Space.o loopback.o
 #obj-$(CONFIG_NETCONSOLE) += netconsole.o
 obj-y += phy/

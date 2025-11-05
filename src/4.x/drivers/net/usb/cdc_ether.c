@@ -439,65 +439,6 @@ int usbnet_cdc_bind(struct usbnet *dev, struct usb_interface *intf)
 }
 EXPORT_SYMBOL_GPL(usbnet_cdc_bind);
 
-static int usbnet_cdc_zte_bind(struct usbnet *dev, struct usb_interface *intf)
-{
-	int status = usbnet_cdc_bind(dev, intf);
-
-	if (!status && (dev->net->dev_addr[0] & 0x02))
-		eth_hw_addr_random(dev->net);
-
-	return status;
-}
-
-/* Make sure packets have correct destination MAC address
- *
- * A firmware bug observed on some devices (ZTE MF823/831/910) is that the
- * device sends packets with a static, bogus, random MAC address (event if
- * device MAC address has been updated). Always set MAC address to that of the
- * device.
- */
-int usbnet_cdc_zte_rx_fixup(struct usbnet *dev, struct sk_buff *skb)
-{
-	if (skb->len < ETH_HLEN || !(skb->data[0] & 0x02))
-		return 1;
-
-	skb_reset_mac_header(skb);
-	ether_addr_copy(eth_hdr(skb)->h_dest, dev->net->dev_addr);
-
-	return 1;
-}
-EXPORT_SYMBOL_GPL(usbnet_cdc_zte_rx_fixup);
-
-/* Ensure correct link state
- *
- * Some devices (ZTE MF823/831/910) export two carrier on notifications when
- * connected. This causes the link state to be incorrect. Work around this by
- * always setting the state to off, then on.
- */
-static void usbnet_cdc_zte_status(struct usbnet *dev, struct urb *urb)
-{
-	struct usb_cdc_notification *event;
-
-	if (urb->actual_length < sizeof(*event))
-		return;
-
-	event = urb->transfer_buffer;
-
-	if (event->bNotificationType != USB_CDC_NOTIFY_NETWORK_CONNECTION) {
-		usbnet_cdc_status(dev, urb);
-		return;
-	}
-
-	netif_dbg(dev, timer, dev->net, "CDC: carrier %s\n",
-		  event->wValue ? "on" : "off");
-
-	if (event->wValue &&
-	    netif_carrier_ok(dev->net))
-		netif_carrier_off(dev->net);
-
-	usbnet_link_change(dev, !!event->wValue, 0);
-}
-
 static const struct driver_info	cdc_info = {
 	.description =	"CDC Ethernet Device",
 	.flags =	FLAG_ETHER | FLAG_POINTTOPOINT,
@@ -506,17 +447,6 @@ static const struct driver_info	cdc_info = {
 	.status =	usbnet_cdc_status,
 	.set_rx_mode =	usbnet_cdc_update_filter,
 	.manage_power =	usbnet_manage_power,
-};
-
-static const struct driver_info	zte_cdc_info = {
-	.description =	"ZTE CDC Ethernet Device",
-	.flags =	FLAG_ETHER | FLAG_POINTTOPOINT,
-	.bind =		usbnet_cdc_zte_bind,
-	.unbind =	usbnet_cdc_unbind,
-	.status =	usbnet_cdc_zte_status,
-	.set_rx_mode =	usbnet_cdc_update_filter,
-	.manage_power =	usbnet_manage_power,
-	.rx_fixup = usbnet_cdc_zte_rx_fixup,
 };
 
 static const struct driver_info wwan_info = {
@@ -541,11 +471,6 @@ static const struct driver_info wwan_info = {
 #define LINKSYS_VENDOR_ID	0x13b1
 #define NVIDIA_VENDOR_ID	0x0955
 #define HP_VENDOR_ID		0x03f0
-#define MICROSOFT_VENDOR_ID	0x045e
-#define UBLOX_VENDOR_ID		0x1546
-#define TPLINK_VENDOR_ID	0x2357
-#define AQUANTIA_VENDOR_ID	0x2eca
-#define ASIX_VENDOR_ID		0x0b95
 
 static const struct usb_device_id	products[] = {
 /* BLACKLIST !!
@@ -559,11 +484,6 @@ static const struct usb_device_id	products[] = {
 #define	ZAURUS_MASTER_INTERFACE \
 	.bInterfaceClass	= USB_CLASS_COMM, \
 	.bInterfaceSubClass	= USB_CDC_SUBCLASS_ETHERNET, \
-	.bInterfaceProtocol	= USB_CDC_PROTO_NONE
-
-#define ZAURUS_FAKE_INTERFACE \
-	.bInterfaceClass	= USB_CLASS_COMM, \
-	.bInterfaceSubClass	= USB_CDC_SUBCLASS_MDLM, \
 	.bInterfaceProtocol	= USB_CDC_PROTO_NONE
 
 /* SA-1100 based Sharp Zaurus ("collie"), or compatible;
@@ -595,13 +515,6 @@ static const struct usb_device_id	products[] = {
 	.match_flags	=   USB_DEVICE_ID_MATCH_INT_INFO
 			  | USB_DEVICE_ID_MATCH_DEVICE,
 	.idVendor		= 0x04DD,
-	.idProduct		= 0x8005,   /* A-300 */
-	ZAURUS_FAKE_INTERFACE,
-	.driver_info        = 0,
-}, {
-	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
-			  | USB_DEVICE_ID_MATCH_DEVICE,
-	.idVendor		= 0x04DD,
 	.idProduct		= 0x8006,	/* B-500/SL-5600 */
 	ZAURUS_MASTER_INTERFACE,
 	.driver_info		= 0,
@@ -609,23 +522,9 @@ static const struct usb_device_id	products[] = {
 	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
 			  | USB_DEVICE_ID_MATCH_DEVICE,
 	.idVendor		= 0x04DD,
-	.idProduct		= 0x8006,   /* B-500/SL-5600 */
-	ZAURUS_FAKE_INTERFACE,
-	.driver_info        = 0,
-}, {
-	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
-			  | USB_DEVICE_ID_MATCH_DEVICE,
-	.idVendor		= 0x04DD,
 	.idProduct		= 0x8007,	/* C-700 */
 	ZAURUS_MASTER_INTERFACE,
 	.driver_info		= 0,
-}, {
-	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
-			  | USB_DEVICE_ID_MATCH_DEVICE,
-	.idVendor		= 0x04DD,
-	.idProduct		= 0x8007,   /* C-700 */
-	ZAURUS_FAKE_INTERFACE,
-	.driver_info        = 0,
 }, {
 	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
 		 | USB_DEVICE_ID_MATCH_DEVICE,
@@ -639,13 +538,6 @@ static const struct usb_device_id	products[] = {
 	.idVendor               = 0x04DD,
 	.idProduct              = 0x9032,	/* SL-6000 */
 	ZAURUS_MASTER_INTERFACE,
-	.driver_info		= 0,
-}, {
-	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
-		 | USB_DEVICE_ID_MATCH_DEVICE,
-	.idVendor               = 0x04DD,
-	.idProduct              = 0x9032,	/* SL-6000 */
-	ZAURUS_FAKE_INTERFACE,
 	.driver_info		= 0,
 }, {
 	.match_flags    =   USB_DEVICE_ID_MATCH_INT_INFO
@@ -745,6 +637,13 @@ static const struct usb_device_id	products[] = {
 	.driver_info = 0,
 },
 
+/* Realtek RTL8152 Based USB 2.0 Ethernet Adapters */
+{
+	USB_DEVICE_AND_INTERFACE_INFO(REALTEK_VENDOR_ID, 0x8152, USB_CLASS_COMM,
+			USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
+	.driver_info = 0,
+},
+
 /* Realtek RTL8153 Based USB 3.0 Ethernet Adapters */
 {
 	USB_DEVICE_AND_INTERFACE_INFO(REALTEK_VENDOR_ID, 0x8153, USB_CLASS_COMM,
@@ -752,50 +651,33 @@ static const struct usb_device_id	products[] = {
 	.driver_info = 0,
 },
 
-/* Lenovo Powered USB-C Travel Hub (4X90S92381, based on Realtek RTL8153) */
+/* Samsung USB Ethernet Adapters */
 {
-	USB_DEVICE_AND_INTERFACE_INFO(LENOVO_VENDOR_ID, 0x721e, USB_CLASS_COMM,
+	USB_DEVICE_AND_INTERFACE_INFO(SAMSUNG_VENDOR_ID, 0xa101, USB_CLASS_COMM,
 			USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
 	.driver_info = 0,
 },
 
-/* Aquantia AQtion USB to 5GbE Controller (based on AQC111U) */
+#if IS_ENABLED(CONFIG_USB_RTL8152)
+/* Linksys USB3GIGV1 Ethernet Adapter */
 {
-	USB_DEVICE_AND_INTERFACE_INFO(AQUANTIA_VENDOR_ID, 0xc101,
-				      USB_CLASS_COMM, USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
+	USB_DEVICE_AND_INTERFACE_INFO(LINKSYS_VENDOR_ID, 0x0041, USB_CLASS_COMM,
+			USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
+	.driver_info = 0,
+},
+#endif
+
+/* Lenovo Thinkpad USB 3.0 Ethernet Adapters (based on Realtek RTL8153) */
+{
+	USB_DEVICE_AND_INTERFACE_INFO(LENOVO_VENDOR_ID, 0x7205, USB_CLASS_COMM,
+			USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
 	.driver_info = 0,
 },
 
-/* ASIX USB 3.1 Gen1 to 5G Multi-Gigabit Ethernet Adapter(based on AQC111U) */
+/* NVIDIA Tegra USB 3.0 Ethernet Adapters (based on Realtek RTL8153) */
 {
-	USB_DEVICE_AND_INTERFACE_INFO(ASIX_VENDOR_ID, 0x2790, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = 0,
-},
-
-/* ASIX USB 3.1 Gen1 to 2.5G Multi-Gigabit Ethernet Adapter(based on AQC112U) */
-{
-	USB_DEVICE_AND_INTERFACE_INFO(ASIX_VENDOR_ID, 0x2791, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = 0,
-},
-
-/* USB-C 3.1 to 5GBASE-T Ethernet Adapter (based on AQC111U) */
-{
-	USB_DEVICE_AND_INTERFACE_INFO(0x20f4, 0xe05a, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = 0,
-},
-
-/* QNAP QNA-UC5G1T USB to 5GbE Adapter (based on AQC111U) */
-{
-	USB_DEVICE_AND_INTERFACE_INFO(0x1c04, 0x0015, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
+	USB_DEVICE_AND_INTERFACE_INFO(NVIDIA_VENDOR_ID, 0x09ff, USB_CLASS_COMM,
+			USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
 	.driver_info = 0,
 },
 
@@ -840,6 +722,12 @@ static const struct usb_device_id	products[] = {
 				      USB_CDC_PROTO_NONE),
 	.driver_info = (unsigned long)&wwan_info,
 }, {
+	/* Cinterion AHS3 modem by GEMALTO */
+	USB_DEVICE_AND_INTERFACE_INFO(0x1e2d, 0x0055, USB_CLASS_COMM,
+				      USB_CDC_SUBCLASS_ETHERNET,
+				      USB_CDC_PROTO_NONE),
+	.driver_info = (unsigned long)&wwan_info,
+}, {
 	/* Telit modules */
 	USB_VENDOR_AND_INTERFACE_INFO(0x1bc7, USB_CLASS_COMM,
 			USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
@@ -849,66 +737,6 @@ static const struct usb_device_id	products[] = {
 	USB_DEVICE_AND_INTERFACE_INFO(DELL_VENDOR_ID, 0x81ba, USB_CLASS_COMM,
 			USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
 	.driver_info = (kernel_ulong_t)&wwan_info,
-}, {
-	/* Huawei ME906 and ME909 */
-	USB_DEVICE_AND_INTERFACE_INFO(HUAWEI_VENDOR_ID, 0x15c1, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* ZTE modules */
-	USB_VENDOR_AND_INTERFACE_INFO(ZTE_VENDOR_ID, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&zte_cdc_info,
-}, {
-	/* U-blox TOBY-L2 */
-	USB_DEVICE_AND_INTERFACE_INFO(UBLOX_VENDOR_ID, 0x1143, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* U-blox SARA-U2 */
-	USB_DEVICE_AND_INTERFACE_INFO(UBLOX_VENDOR_ID, 0x1104, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* U-blox LARA-R6 01B */
-	USB_DEVICE_AND_INTERFACE_INFO(UBLOX_VENDOR_ID, 0x1313, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* U-blox LARA-L6 */
-	USB_DEVICE_AND_INTERFACE_INFO(UBLOX_VENDOR_ID, 0x1343, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* Cinterion PLS8 modem by GEMALTO */
-	USB_DEVICE_AND_INTERFACE_INFO(0x1e2d, 0x0061, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* Cinterion AHS3 modem by GEMALTO */
-	USB_DEVICE_AND_INTERFACE_INFO(0x1e2d, 0x0055, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* Cinterion PLS62-W modem by GEMALTO/THALES */
-	USB_DEVICE_AND_INTERFACE_INFO(0x1e2d, 0x005b, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
-}, {
-	/* Cinterion PLS83/PLS63 modem by GEMALTO/THALES */
-	USB_DEVICE_AND_INTERFACE_INFO(0x1e2d, 0x0069, USB_CLASS_COMM,
-				      USB_CDC_SUBCLASS_ETHERNET,
-				      USB_CDC_PROTO_NONE),
-	.driver_info = (unsigned long)&wwan_info,
 }, {
 	USB_INTERFACE_INFO(USB_CLASS_COMM, USB_CDC_SUBCLASS_ETHERNET,
 			USB_CDC_PROTO_NONE),

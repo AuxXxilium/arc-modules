@@ -1,12 +1,13 @@
 /*
  * This is the Fusion MPT base driver providing common API layer interface
- * to set Diagnostic triggers for MPT (Message Passing Technology) based
+ * to set Diagnostic triggers for MPT (Message Passing Technology) based 
  * controllers
  *
  * This code is based on drivers/scsi/mpt3sas/mpt3sas_base.h
- * Copyright (C) 2012-2014  LSI Corporation
- * Copyright (C) 2013-2014 Avago Technologies
- *  (mailto: MPT-FusionLinux.pdl@avagotech.com)
+ * Copyright (C) 2013-2025  LSI Corporation
+ * Copyright (C) 2013-2025  Avago Technologies
+ * Copyright (C) 2013-2025  Broadcom Inc.
+ *  (mailto:MPT-FusionLinux.pdl@broadcom.com)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -69,7 +70,7 @@
 #define MASTER_TRIGGER_TASK_MANAGMENT   (0x00000004)
 #define MASTER_TRIGGER_DEVICE_REMOVAL   (0x00000008)
 
-/* fake firmware event for trigger */
+/* fake firmware event for tigger */
 #define MPI3_EVENT_DIAGNOSTIC_TRIGGER_FIRED	(0x6E)
 
 /**

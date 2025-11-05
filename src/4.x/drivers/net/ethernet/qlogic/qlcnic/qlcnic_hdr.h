@@ -556,6 +556,7 @@ enum {
 	QLCNIC_TEMP_PANIC	/* Fatal error, hardware has shut down. */
 };
 
+
 /* Lock IDs for PHY lock */
 #define PHY_LOCK_DRIVER		0x44524956
 

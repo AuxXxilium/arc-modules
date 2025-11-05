@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-only
 ################################################################################
 #
-# r8125 is the Linux device driver released for Realtek 2.5Gigabit Ethernet
+# r8125 is the Linux device driver released for Realtek 2.5 Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2022 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -31,6 +31,7 @@
 ################################################################################
 
 CONFIG_SOC_LAN = n
+ENABLE_FIBER_SUPPORT = n
 ENABLE_REALWOW_SUPPORT = n
 ENABLE_DASH_SUPPORT = n
 ENABLE_DASH_PRINTER_SUPPORT = n
@@ -47,14 +48,21 @@ ENABLE_PTP_MASTER_MODE = n
 ENABLE_RSS_SUPPORT = n
 ENABLE_LIB_SUPPORT = n
 ENABLE_USE_FIRMWARE_FILE = n
-DISABLE_PM_SUPPORT = n
+DISABLE_WOL_SUPPORT = n
 DISABLE_MULTI_MSIX_VECTOR = n
+ENABLE_DOUBLE_VLAN = n
+ENABLE_PAGE_REUSE = n
+ENABLE_RX_PACKET_FRAGMENT = n
 
 ifneq ($(KERNELRELEASE),)
 	obj-m := r8125.o
 	r8125-objs := r8125_n.o rtl_eeprom.o rtltool.o
 	ifeq ($(CONFIG_SOC_LAN), y)
 		EXTRA_CFLAGS += -DCONFIG_SOC_LAN
+	endif
+	ifeq ($(ENABLE_FIBER_SUPPORT), y)
+		r8125-objs += r8125_fiber.o
+		EXTRA_CFLAGS += -DENABLE_FIBER_SUPPORT
 	endif
 	ifeq ($(ENABLE_REALWOW_SUPPORT), y)
 		r8125-objs += r8125_realwow.o
@@ -113,11 +121,20 @@ ifneq ($(KERNELRELEASE),)
 		r8125-objs += r8125_firmware.o
 		EXTRA_CFLAGS += -DENABLE_USE_FIRMWARE_FILE
 	endif
-	ifeq ($(DISABLE_PM_SUPPORT), y)
-		EXTRA_CFLAGS += -DDISABLE_PM_SUPPORT
+	ifeq ($(DISABLE_WOL_SUPPORT), y)
+		EXTRA_CFLAGS += -DDISABLE_WOL_SUPPORT
 	endif
 	ifeq ($(DISABLE_MULTI_MSIX_VECTOR), y)
 		EXTRA_CFLAGS += -DDISABLE_MULTI_MSIX_VECTOR
+	endif
+	ifeq ($(ENABLE_DOUBLE_VLAN), y)
+		EXTRA_CFLAGS += -DENABLE_DOUBLE_VLAN
+	endif
+	ifeq ($(ENABLE_PAGE_REUSE), y)
+		EXTRA_CFLAGS += -DENABLE_PAGE_REUSE
+	endif
+	ifeq ($(ENABLE_RX_PACKET_FRAGMENT), y)
+		EXTRA_CFLAGS += -DENABLE_RX_PACKET_FRAGMENT
 	endif
 else
 	BASEDIR := /lib/modules/$(shell uname -r)

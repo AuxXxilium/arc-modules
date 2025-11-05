@@ -5,7 +5,7 @@
 # r8101 is the Linux device driver released for Realtek Fast Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2021 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -93,7 +93,7 @@ void rtl8101_eeprom_cleanup(struct rtl8101_private *tp)
         rtl8101_lower_clock(tp, &x);
 }
 
-int rtl8101_eeprom_cmd_done(struct rtl8101_private *tp)
+static int rtl8101_eeprom_cmd_done(struct rtl8101_private *tp)
 {
         u8 x;
         int i;

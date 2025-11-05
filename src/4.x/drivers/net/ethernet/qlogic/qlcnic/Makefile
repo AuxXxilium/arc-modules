@@ -2,7 +2,7 @@
 # Makefile for Qlogic 1G/10G Ethernet Driver for CNA devices
 #
 
-obj-m := qlcnic.o
+obj-$(CONFIG_QLCNIC) := qlcnic.o
 
 qlcnic-y := qlcnic_hw.o qlcnic_main.o qlcnic_init.o \
 	qlcnic_ethtool.o qlcnic_ctx.o qlcnic_io.o \

@@ -700,7 +700,7 @@ static struct pci_device_id mvs_pci_table[] = {
 		.class_mask	= 0,
 		.driver_data	= chip_9445,
 	},
-	{ PCI_VDEVICE(MARVELL, 0x9485), chip_9485}, /* MARVELL Ignore subvendor/subdevice PeterSuh-Q3 2023.12.15 */
+	{ PCI_VDEVICE(MARVELL_EXT, 0x9485), chip_9485}, /* MARVELL 9480/9485 (any vendor/model) PeterSuh-Q3 2023.12.15 */
 	{ PCI_VDEVICE(OCZ, 0x1021), chip_9485}, /* OCZ RevoDrive3 */
 	{ PCI_VDEVICE(OCZ, 0x1022), chip_9485}, /* OCZ RevoDrive3/zDriveR4 (exact model unknown) */
 	{ PCI_VDEVICE(OCZ, 0x1040), chip_9485}, /* OCZ RevoDrive3/zDriveR4 (exact model unknown) */

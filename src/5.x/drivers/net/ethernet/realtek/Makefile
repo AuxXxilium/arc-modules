@@ -8,6 +8,8 @@ obj-$(CONFIG_8139CP) += 8139cp.o
 #obj-$(CONFIG_ATP) += atp.o
 obj-$(CONFIG_R8168) += r8168/
 obj-$(CONFIG_R8125) += r8125/
+obj-$(CONFIG_R8126) += r8126/
+obj-$(CONFIG_R8126) += r8127/
 
 ifeq ($(CONFIG_R8168), m)
 	EXTRA_CFLAGS += -DCONFIG_R8168

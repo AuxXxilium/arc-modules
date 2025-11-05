@@ -979,6 +979,21 @@ END:
 
 }
 
+u8 syno_pm_with_synology_magic(const struct ata_port *ap)
+{
+	u8 ret = 0;
+
+	if (sata_pmp_gscr_syno(ap->link.device->gscr) != SYNO_HEX ||
+		sata_pmp_gscr_logy(ap->link.device->gscr) != LOGY_HEX) {
+		goto END;
+	}
+
+	ret = 1;
+
+END:
+	return ret;
+}
+
 #ifdef MY_ABC_HERE
 
 #ifdef MY_ABC_HERE
@@ -2697,7 +2712,11 @@ int sata_pmp_set_lpm(struct ata_link *link, enum ata_lpm_policy policy,
  */
 static int sata_pmp_read_gscr(struct ata_device *dev, u32 *gscr)
 {
+#if defined(MY_ABC_HERE) || defined(MY_ABC_HERE)
+	static const int gscr_to_read[] = { 0, 1, 2, 32, 33, 64, 96 , SATA_PMP_GSCR_SYNO, SATA_PMP_GSCR_LOGY};
+#else /* (MY_ABC_HERE) || defined(MY_ABC_HERE) */
 	static const int gscr_to_read[] = { 0, 1, 2, 32, 33, 64, 96 };
+#endif /* (MY_ABC_HERE) || defined(MY_ABC_HERE) */
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(gscr_to_read); i++) {
@@ -2721,6 +2740,11 @@ static int sata_pmp_read_gscr(struct ata_device *dev, u32 *gscr)
 				dev->link->ap->uiSflags |= ATA_SYNO_FLAG_GSCR_FAIL;
 			}
 #endif /* MY_ABC_HERE */
+#if defined(MY_ABC_HERE) || defined(MY_ABC_HERE)
+			if (SATA_PMP_GSCR_SYNO == reg || SATA_PMP_GSCR_LOGY == reg) {
+				continue;
+			}
+#endif /* (MY_ABC_HERE) || defined(MY_ABC_HERE) */
 			return -EIO;
 		}
 	}
@@ -3415,6 +3439,7 @@ static int sata_pmp_eh_recover_pmp(struct ata_port *ap,
 #ifdef MY_ABC_HERE
 		ata_dev_printk(dev, KERN_WARNING, "ATA_DFLAG_DETACH (flags=0x%lx)\n", dev->flags);
 #endif /* MY_ABC_HERE */
+		rc = -ENODEV;
 		goto fail;
 	}
 

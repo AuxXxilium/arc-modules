@@ -1,3 +1,6 @@
+#ifndef MY_ABC_HERE
+#define MY_ABC_HERE
+#endif
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/libata.h>
@@ -30,6 +33,16 @@ static struct mutex smbus_hdd_powerctl_mutex_spin;
 static DEFINE_MUTEX(smbus_hdd_powerctl_mutex_spin);
 extern char gSynoSmbusHddType[16];
 extern SYNO_SMBUS_HDD_POWERCTL SynoSmbusHddPowerCtl; 
+#ifdef MY_ABC_HERE
+extern int gSynoSmbusSwitchCount;
+extern int gSynoSmbusSwitchAdapters[SMBUS_SWITCH_MAX_COUNT+1];
+extern int gSynoSmbusSwitchAddrs[SMBUS_SWITCH_MAX_COUNT+1];
+extern int gSynoSmbusSwitchVals[SMBUS_SWITCH_MAX_COUNT+1];
+#else
+extern int gSynoSmbusSwitchAdapter;
+extern int gSynoSmbusSwitchAddr;
+extern int gSynoSmbusSwitchVal;
+#endif /* MY_ABC_HERE */
 
 bool gblIsTca9555Init = false;
 bool gbIsTca9555Enabled = false;
@@ -384,9 +397,13 @@ int syno_microp_hdd_present_read(int adapter, int address, int index)
 	} else if (16 >= index) {
 		iI2c_REG = HDDBP_MICROP_PORT1_PRESENT;
 		iBitToAccess = index - 9;
-	} else {
+	} else if (24 >= index) {
 		iI2c_REG = HDDBP_MICROP_PORT2_PRESENT;
 		iBitToAccess = index - 17;
+	} else {
+		// index out of range, just return not present
+		iRet = 1;
+		goto END;
 	}
 
 	// read present data from i2c
@@ -493,9 +510,11 @@ int syno_microp_hdd_enable_write(int adapter, int address, int index, int val)
 	} else if (16 >= index) {
 		uiI2cManualReg = HDDBP_MICROP_PORT1_MANUAL_ENABLE;
 		iBitToAccess = index - 9;
-	} else {
+	} else if (24 >= index) {
 		uiI2cManualReg = HDDBP_MICROP_PORT2_MANUAL_ENABLE;
 		iBitToAccess = index - 17;
+	} else {
+		goto END;
 	}
 
 	// read current enable data from i2c
@@ -593,12 +612,96 @@ END:
 	return iRet;
 }
 
+#ifdef MY_ABC_HERE
+void syno_smbus_switch_config(void)
+{
+	int iRet = -1;
+	int i;
+	union i2c_smbus_data data;
+	struct i2c_adapter *pAdapter = NULL;
+
+	mutex_lock(&smbus_hdd_powerctl_mutex_spin);
+	if(0 == gSynoSmbusSwitchCount) {
+		// some model need not to config
+		goto END;
+	}
+	for (i = 0;i < gSynoSmbusSwitchCount;i++){
+		if(0 == gSynoSmbusSwitchAddrs[i]) {
+			// some model need not to config
+			printk(KERN_ERR "gSynoSmbusSwitchAddrs[%d] is 0. End the switch process\n", i);
+			goto END;
+		}
+
+		pAdapter = i2c_get_adapter(gSynoSmbusSwitchAdapters[i]);
+		if (NULL == pAdapter) {
+			printk(KERN_ERR "I2C initial error: failed to get i2c adapter from gSynoSmbusSwitchAdapters[%d], %d\n",
+				i, gSynoSmbusSwitchAdapters[i]
+			);
+			goto END;
+		}
+
+		memset(&data, 0, sizeof(data));
+		iRet = i2c_smbus_xfer(pAdapter, gSynoSmbusSwitchAddrs[i], 0,
+				I2C_SMBUS_WRITE, gSynoSmbusSwitchVals[i],
+				I2C_SMBUS_BYTE, &data);
+		if (0 > iRet) {
+			printk(KERN_ERR "I2C write 0x%2x to 0x%2x fail\n", gSynoSmbusSwitchVals[i], gSynoSmbusSwitchAddrs[i]);
+			if (pAdapter) {
+				i2c_put_adapter(pAdapter);
+			}
+			goto END;
+		}
+		// release the pAdapter
+		if (pAdapter) {
+			i2c_put_adapter(pAdapter);
+		}
+	}
+END:
+	mutex_unlock(&smbus_hdd_powerctl_mutex_spin);
+}
+#else /* MY_ABC_HERE */
+void syno_smbus_switch_config(void)
+{
+	int iRet = -1;
+	union i2c_smbus_data data;
+	struct i2c_adapter *pAdapter = NULL;
+
+	mutex_lock(&smbus_hdd_powerctl_mutex_spin);
+	if(0 == gSynoSmbusSwitchAddr) {
+		// some model need not to config
+		goto END;
+	}
+
+	pAdapter = i2c_get_adapter(gSynoSmbusSwitchAdapter);
+	if (NULL == pAdapter) {
+		printk(KERN_ERR "I2C initial error: failed to get i2c adapter\n");
+		goto END;
+	}
+
+	memset(&data, 0, sizeof(data));
+	iRet = i2c_smbus_xfer(pAdapter, gSynoSmbusSwitchAddr, 0,
+			I2C_SMBUS_WRITE, gSynoSmbusSwitchVal,
+			I2C_SMBUS_BYTE, &data);
+	if (0 > iRet) {
+		printk(KERN_ERR "I2C write %x fail\n", gSynoSmbusSwitchAddr);
+		goto END;
+	}
+
+END:
+	if (pAdapter) {
+		i2c_put_adapter(pAdapter);
+	}
+	mutex_unlock(&smbus_hdd_powerctl_mutex_spin);
+}
+#endif /* MY_ABC_HERE */
+
 void syno_smbus_hdd_powerctl_init(void){
+	syno_smbus_switch_config();
 	if(0 == strncmp(gSynoSmbusHddType, "tca9555", strlen("tca9555"))){
 		SynoSmbusHddPowerCtl.syno_smbus_hdd_enable_write=syno_tca9555_hdd_enable_write;
 		SynoSmbusHddPowerCtl.syno_smbus_hdd_enable_read=syno_tca9555_hdd_enable_read;
 		SynoSmbusHddPowerCtl.syno_smbus_hdd_present_read=syno_tca9555_hdd_present_read;
-		if (syno_is_hw_version(HW_DS1621p)) {
+		if (syno_is_hw_version(HW_DS1621p) || syno_is_hw_version(HW_DS1623p)) {
 			SynoSmbusHddPowerCtl.syno_smbus_hdd_enable_write_all_once=syno_tca9555_hdd_enable_write_all_once;
 		} else {
 			SynoSmbusHddPowerCtl.syno_smbus_hdd_enable_write_all_once=NULL;

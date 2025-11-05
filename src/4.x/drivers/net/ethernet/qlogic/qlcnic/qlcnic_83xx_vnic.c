@@ -82,6 +82,7 @@ qlcnic_83xx_config_vnic_buff_descriptors(struct qlcnic_adapter *adapter)
 	adapter->max_rds_rings = MAX_RDS_RINGS;
 }
 
+
 /**
  * qlcnic_83xx_init_mgmt_vnic
  *

@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2021 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -30,7 +30,7 @@
 #  US6,570,884, US6,115,776, and US6,327,625.
 ################################################################################
 
-CONFIG_SOC_LAN = n
+CONFIG_SOC_LAN = y
 ENABLE_FIBER_SUPPORT = n
 ENABLE_REALWOW_SUPPORT = n
 ENABLE_DASH_SUPPORT = n
@@ -43,6 +43,12 @@ ENABLE_EEE = y
 ENABLE_S0_MAGIC_PACKET = n
 CONFIG_DYNAMIC_ASPM = y
 ENABLE_USE_FIRMWARE_FILE = n
+CONFIG_CTAP_SHORT_OFF = n
+ENABLE_MULTIPLE_TX_QUEUE = n
+ENABLE_RSS_SUPPORT = n
+ENABLE_LIB_SUPPORT = n
+DISABLE_WOL_SUPPORT = n
+ENABLE_GIGA_LITE = y
 
 ifneq ($(KERNELRELEASE),)
 	obj-m := r8168.o
@@ -66,7 +72,9 @@ ifneq ($(KERNELRELEASE),)
 	    r8168-objs += r8168_dash.o
 		EXTRA_CFLAGS += -DENABLE_DASH_SUPPORT -DENABLE_DASH_PRINTER_SUPPORT
 	endif
-	EXTRA_CFLAGS += -DCONFIG_R8168_NAPI
+	ifneq ($(ENABLE_RSS_SUPPORT), y)
+		EXTRA_CFLAGS += -DCONFIG_R8168_NAPI
+	endif
 	EXTRA_CFLAGS += -DCONFIG_R8168_VLAN
 	ifeq ($(CONFIG_DOWN_SPEED_100), y)
 		EXTRA_CFLAGS += -DCONFIG_DOWN_SPEED_100
@@ -92,6 +100,26 @@ ifneq ($(KERNELRELEASE),)
 	ifeq ($(ENABLE_USE_FIRMWARE_FILE), y)
 		r8168-objs += r8168_firmware.o
 		EXTRA_CFLAGS += -DENABLE_USE_FIRMWARE_FILE
+	endif
+	ifeq ($(CONFIG_CTAP_SHORT_OFF), y)
+		EXTRA_CFLAGS += -DCONFIG_CTAP_SHORT_OFF
+	endif
+	ifeq ($(ENABLE_MULTIPLE_TX_QUEUE), y)
+		EXTRA_CFLAGS += -DENABLE_MULTIPLE_TX_QUEUE
+	endif
+	ifeq ($(ENABLE_RSS_SUPPORT), y)
+		r8168-objs += r8168_rss.o
+		EXTRA_CFLAGS += -DENABLE_RSS_SUPPORT
+	endif
+	ifeq ($(ENABLE_LIB_SUPPORT), y)
+		r8168-objs += r8168_lib.o
+		EXTRA_CFLAGS += -DENABLE_LIB_SUPPORT
+	endif
+	ifeq ($(DISABLE_WOL_SUPPORT), y)
+		EXTRA_CFLAGS += -DDISABLE_WOL_SUPPORT
+	endif
+	ifeq ($(ENABLE_GIGA_LITE), y)
+		EXTRA_CFLAGS += -DENABLE_GIGA_LITE
 	endif
 else
 	BASEDIR := /lib/modules/$(shell uname -r)

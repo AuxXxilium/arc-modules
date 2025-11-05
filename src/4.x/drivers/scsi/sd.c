@@ -4263,15 +4263,15 @@ static void syno_ata_info_enum(struct ata_port *ap, struct scsi_device *sdev) {
 static void syno_usb_info_enum(struct scsi_device *sdev) {
 	struct us_data *us = NULL;
 
-	if (NULL == sdev) {
+    if (!sdev) {
 		return;
-	}
-	us = host_to_us(sdev->host);
+    }
+    us = host_to_us(sdev->host);
 
-	if (NULL == us || NULL == us->pusb_intf) {
+    if (!us || !us->pusb_intf || !us->pusb_dev) {
 		return;
-	}
-
+    }
+	
 	snprintf(sdev->syno_block_info, BLOCK_INFO_SIZE, "%susb_path=%s\n", sdev->syno_block_info, dev_name(&us->pusb_dev->dev));
 }
 

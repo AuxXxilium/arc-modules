@@ -440,7 +440,6 @@ int qlcnic_pinit_from_rom(struct qlcnic_adapter *adapter)
 	QLCWR32(adapter, QLCNIC_CRB_PEG_NET_4 + 0x3c, 1);
 	msleep(20);
 
-	qlcnic_rom_unlock(adapter);
 	/* big hammer don't reset CAM block on reset */
 	QLCWR32(adapter, QLCNIC_ROMUSB_GLB_SW_RESET, 0xfeffffff);
 
@@ -1271,6 +1270,8 @@ qlcnic_get_next_fwtype(struct qlcnic_adapter *adapter)
 	adapter->ahw->fw_type = fw_type;
 }
 
+
+
 void qlcnic_request_firmware(struct qlcnic_adapter *adapter)
 {
 	struct pci_dev *pdev = adapter->pdev;
@@ -1298,6 +1299,7 @@ next:
 		}
 	}
 }
+
 
 void
 qlcnic_release_firmware(struct qlcnic_adapter *adapter)

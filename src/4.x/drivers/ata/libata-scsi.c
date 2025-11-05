@@ -692,6 +692,8 @@ syno_sata_error_event_debug_store(struct device *dev, struct device_attribute *a
 	}
 #endif /* MY_ABC_HERE */
 
+	schedule_work(&(ap->SendDiskRetryEventTask));
+
 	ret = count;
 
 END:
@@ -1950,16 +1952,22 @@ syno_pm_info_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct Scsi_Host *shost = class_to_shost(dev);
 	struct ata_port *ap = ata_shost_to_port(shost);
 	ssize_t len = 0;
-	int index, start_idx;
+	int index = 0;
 	int NumOfPMPorts = 0;
 #ifdef MY_ABC_HERE
 	char szPciePath[SYNO_DTS_PROPERTY_CONTENT_LENGTH] = {'\0'};
+#else /* MY_ABC_HERE */
+	int start_idx;
 #endif /* MY_ABC_HERE */
 
 	if (ap->nr_pmp_links &&
-		syno_is_synology_pm(ap)) {
+		(syno_is_synology_pm(ap) ||
+		syno_pm_with_synology_magic(ap))) {
 		char szTmp[BDEVNAME_SIZE];
 		char *szTmp1 = NULL;
+#ifdef MY_ABC_HERE
+		struct scsi_device *sdev = NULL;
+#endif /* MY_ABC_HERE */
 		szTmp1 = (char*) kcalloc(PAGE_SIZE, sizeof(char), GFP_KERNEL);
 		if (NULL == szTmp1) {
 			printk(KERN_WARNING "%s kmalloc failed\n", __FUNCTION__);
@@ -1974,6 +1982,21 @@ syno_pm_info_show(struct device *dev, struct device_attribute *attr, char *buf)
 		memset(szTmp, 0, sizeof(szTmp));
 
 		/* syno_device_list */
+#ifdef MY_ABC_HERE
+		shost_for_each_device(sdev, shost) {
+			/* Skip virtual pmp device */
+			if (SYNO_PM_VIRTUAL_SCSI_CHANNEL == sdev->channel) {
+				continue;
+			}
+			if (0 == index) {
+				snprintf(szTmp, BDEVNAME_SIZE, "/dev/%s", sdev->syno_disk_name);
+			} else {
+				snprintf(szTmp, BDEVNAME_SIZE, ",/dev/%s", sdev->syno_disk_name);
+			}
+			strncat(szTmp1, szTmp, BDEVNAME_SIZE);
+			index++;
+		}
+#else /* MY_ABC_HERE */
 		start_idx = syno_libata_index_get(shost, SATA_PMP_MAX_PORTS, 0, 0);
 		for (index = 0; index < NumOfPMPorts; index++) {
 			DeviceNameGet(index+start_idx, szTmp);
@@ -1984,6 +2007,7 @@ syno_pm_info_show(struct device *dev, struct device_attribute *attr, char *buf)
 				strncat(szTmp1, szTmp, BDEVNAME_SIZE);
 			}
 		}
+#endif /* MY_ABC_HERE */
 		snprintf(buf, PAGE_SIZE, "%s%s%s%s", EBOX_INFO_DEV_LIST_KEY, "=\"", szTmp1, "\"\n");
 
 		/* vendor id and device id */
@@ -2206,7 +2230,7 @@ syno_pm_info_show(struct device *dev, struct device_attribute *attr, char *buf)
 		} else {
 			snprintf(szTmp,
 					BDEVNAME_SIZE,
-					"%s=\"Unknown\"\n%s=\"0\"\n", EBOX_INFO_UNIQUE_KEY, EBOX_INFO_EMID_KEY);
+					"%s=\"Unknown\"\n%s=\"%d\"\n", EBOX_INFO_UNIQUE_KEY, EBOX_INFO_EMID_KEY, ap->PMSynoEMID);
 		}
 		strncat(szTmp1, szTmp, BDEVNAME_SIZE);
 
@@ -2242,7 +2266,7 @@ syno_pm_info_show(struct device *dev, struct device_attribute *attr, char *buf)
 #endif /* MY_ABC_HERE */
 
 		/* put it together */
-		len = snprintf(buf, PAGE_SIZE, "%s%s", buf, szTmp1);
+		len = strlen(strncat(buf, szTmp1, PAGE_SIZE - strlen(buf) - 1));
 		kfree(szTmp1);
 	} else {
 		len = snprintf(buf, PAGE_SIZE, "%s%s%s", EBOX_INFO_DEV_LIST_KEY, "=\"\"", "\n");
@@ -2824,7 +2848,6 @@ syno_latency_read_hist_show(struct device *device,
 	struct ata_device *dev;
 	struct ata_link *link;
 	ssize_t len = 0;
-	char szHist[2048] = {'\0'};
 
 	// We not lock it to sacrifice some accuracy but decrease overhead.
 	dev = ata_scsi_find_dev(ap, sdev);
@@ -2833,14 +2856,10 @@ syno_latency_read_hist_show(struct device *device,
 	}
 	link = dev->link;
 
-	disk_latency_hist_get(link->ata_latency.u64TimeBuckets[1], szHist, sizeof(szHist));
-	len += strlen(szHist);
-	strncat(buf, szHist, PAGE_SIZE - len - 1);
-
-	memset(szHist, 0, sizeof(szHist));
-	disk_latency_hist_get(link->ata_latency.u64RespTimeBuckets[1], szHist, sizeof(szHist));
-	len += strlen(szHist);
-	strncat(buf, szHist, PAGE_SIZE - len - 1);
+	disk_latency_hist_get(link->ata_latency.u64TimeBuckets[1], buf, PAGE_SIZE);
+	len = strlen(buf);
+	disk_latency_hist_get(link->ata_latency.u64RespTimeBuckets[1], buf + len, PAGE_SIZE - len - 1);
+	len = strlen(buf);
 
 END:
 	return len;
@@ -2857,7 +2876,6 @@ syno_latency_write_hist_show(struct device *device,
 	struct ata_device *dev;
 	struct ata_link *link;
 	ssize_t len = 0;
-	char szHist[2048] = {'\0'};
 
 	// We not lock it to sacrifice some accuracy but decrease overhead.
 	dev = ata_scsi_find_dev(ap, sdev);
@@ -2866,14 +2884,10 @@ syno_latency_write_hist_show(struct device *device,
 	}
 	link = dev->link;
 
-	disk_latency_hist_get(link->ata_latency.u64TimeBuckets[2], szHist, sizeof(szHist));
-	len += strlen(szHist);
-	strncat(buf, szHist, PAGE_SIZE - len - 1);
-
-	memset(szHist, 0, sizeof(szHist));
-	disk_latency_hist_get(link->ata_latency.u64RespTimeBuckets[2], szHist, sizeof(szHist));
-	len += strlen(szHist);
-	strncat(buf, szHist, PAGE_SIZE - len - 1);
+	disk_latency_hist_get(link->ata_latency.u64TimeBuckets[2], buf, PAGE_SIZE);
+	len = strlen(buf);
+	disk_latency_hist_get(link->ata_latency.u64RespTimeBuckets[2], buf + len, PAGE_SIZE - len - 1);
+	len = strlen(buf);
 
 END:
 	return len;
@@ -2890,7 +2904,6 @@ syno_latency_other_hist_show(struct device *device,
 	struct ata_device *dev;
 	struct ata_link *link;
 	ssize_t len = 0;
-	char szHist[2048] = {'\0'};
 
 	// We not lock it to sacrifice some accuracy but decrease overhead.
 	dev = ata_scsi_find_dev(ap, sdev);
@@ -2899,14 +2912,10 @@ syno_latency_other_hist_show(struct device *device,
 	}
 	link = dev->link;
 
-	disk_latency_hist_get(link->ata_latency.u64TimeBuckets[0], szHist, sizeof(szHist));
-	len += strlen(szHist);
-	strncat(buf, szHist, PAGE_SIZE - len - 1);
-
-	memset(szHist, 0, sizeof(szHist));
-	disk_latency_hist_get(link->ata_latency.u64RespTimeBuckets[0], szHist, sizeof(szHist));
-	len += strlen(szHist);
-	strncat(buf, szHist, PAGE_SIZE - len - 1);
+	disk_latency_hist_get(link->ata_latency.u64TimeBuckets[0], buf, PAGE_SIZE);
+	len = strlen(buf);
+	disk_latency_hist_get(link->ata_latency.u64RespTimeBuckets[0], buf + len, PAGE_SIZE - len - 1);
+	len = strlen(buf);
 
 END:
 	return len;
@@ -4396,6 +4405,21 @@ nothing_to_do:
 	return 1;
 }
 
+static bool ata_check_nblocks(struct scsi_cmnd *scmd, u32 n_blocks)
+{
+	struct request *rq = scmd->request;
+	u32 req_blocks;
+
+	if (!blk_rq_is_passthrough(rq))
+		return true;
+
+	req_blocks = blk_rq_bytes(rq) / scmd->device->sector_size;
+	if (n_blocks > req_blocks)
+		return false;
+
+	return true;
+}
+
 /**
  *	ata_scsi_rw_xlat - Translate SCSI r/w command into an ATA one
  *	@qc: Storage for translated ATA taskfile
@@ -4444,6 +4468,8 @@ static unsigned int ata_scsi_rw_xlat(struct ata_queued_cmd *qc)
 		scsi_10_lba_len(cdb, &block, &n_block);
 		if (cdb[1] & (1 << 3))
 			tf_flags |= ATA_TFLAG_FUA;
+		if (!ata_check_nblocks(scmd, n_block))
+			goto invalid_fld;
 		break;
 	case READ_6:
 	case WRITE_6:
@@ -4456,6 +4482,8 @@ static unsigned int ata_scsi_rw_xlat(struct ata_queued_cmd *qc)
 		 */
 		if (!n_block)
 			n_block = 256;
+		if (!ata_check_nblocks(scmd, n_block))
+			goto invalid_fld;
 		break;
 	case READ_16:
 	case WRITE_16:
@@ -4464,6 +4492,8 @@ static unsigned int ata_scsi_rw_xlat(struct ata_queued_cmd *qc)
 		scsi_16_lba_len(cdb, &block, &n_block);
 		if (cdb[1] & (1 << 3))
 			tf_flags |= ATA_TFLAG_FUA;
+		if (!ata_check_nblocks(scmd, n_block))
+			goto invalid_fld;
 		break;
 	default:
 		DPRINTK("no-byte command\n");
@@ -7042,22 +7072,19 @@ int ata_scsi_add_hosts(struct ata_host *host, struct scsi_host_template *sht)
 			g_nvc_map_index++;
 		}
 #endif /* MY_DEF_HERE */
-		rc = scsi_add_host_with_dma(ap->scsi_host,
-						&ap->tdev, ap->host->dev);
+		rc = scsi_add_host_with_dma(shost, &ap->tdev, ap->host->dev);
 		if (rc)
-			goto err_add;
+			goto err_alloc;
 	}
 
 	return 0;
 
- err_add:
-	scsi_host_put(host->ports[i]->scsi_host);
  err_alloc:
 	while (--i >= 0) {
 		struct Scsi_Host *shost = host->ports[i]->scsi_host;
 
+		/* scsi_host_put() is in ata_devres_release() */
 		scsi_remove_host(shost);
-		scsi_host_put(shost);
 	}
 	return rc;
 }
@@ -8116,11 +8143,11 @@ END:
 
 int syno_libata_index_get(struct Scsi_Host *host, uint channel, uint id, uint lun)
 {
-	int index = host->host_no;
+	int index = -1;
 	int mapped_idx = -1;
-	struct ata_port *ap = ata_shost_to_port(host);
+	struct ata_port *ap = NULL;
 #ifdef MY_DEF_HERE
-	struct ata_host *pAtaHost = ap->host;
+	struct ata_host *pAtaHost = NULL;
 #endif /* MY_DEF_HERE */
 #if defined(MY_DEF_HERE) || defined(MY_DEF_HERE) || defined(MY_DEF_HERE)
 	bool blMapped = false; /* DiskIdxMap/sata_remap/DiskSeqReverse can't be used at the same time */
@@ -8128,9 +8155,16 @@ int syno_libata_index_get(struct Scsi_Host *host, uint channel, uint id, uint lu
 #ifdef MY_DEF_HERE
 	int i = 0;
 #endif /* MY_DEF_HERE */
-
+	if (host == NULL) {
+		goto END;
+	}
+	index = host->host_no;
+	ap = ata_shost_to_port(host);
+	if (ap) {
+		pAtaHost = ap->host;
+	}
 #ifdef MY_DEF_HERE
-	if (0 < strlen(gszDiskIdxMap)) {
+	if (0 < strlen(gszDiskIdxMap) && pAtaHost) {
 		mapped_idx = syno_libata_index_get_by_map(pAtaHost);
 
 		if (0 <= mapped_idx) {
@@ -8186,7 +8220,7 @@ int syno_libata_index_get(struct Scsi_Host *host, uint channel, uint id, uint lu
 	}
 
 	ap->syno_disk_index = index;
-
+END:
 	return index;
 }
 #endif /* MY_DEF_HERE */

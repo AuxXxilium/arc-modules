@@ -59,7 +59,6 @@
 #include <linux/workqueue.h>
 #include <linux/scatterlist.h>
 #include <linux/io.h>
-#include <linux/async.h>
 #include <linux/log2.h>
 #include <linux/slab.h>
 #include <linux/glob.h>
@@ -442,7 +441,7 @@ int SYNO_CTRL_HDD_POWERON(int index, int value)
 		if (!SynoSmbusHddPowerCtl.bl_init){
 			syno_smbus_hdd_powerctl_init();
 		}
-		if (syno_is_hw_version(HW_DS1621p)) {
+		if (syno_is_hw_version(HW_DS1621p) || syno_is_hw_version(HW_DS1623p)) {
 			if (NULL != SynoSmbusHddPowerCtl.syno_smbus_hdd_enable_write_all_once) {
 				SynoSmbusHddPowerCtl.syno_smbus_hdd_enable_write_all_once(gSynoSmbusHddAdapter, gSynoSmbusHddAddress);
 			}
@@ -2759,6 +2758,25 @@ static int syno_ata_dev_ncq_compat(struct ata_device *dev) {
 	return ret;
 }
 #endif /* MY_ABC_HERE */
+static bool ata_dev_check_adapter(struct ata_device *dev,
+				  unsigned short vendor_id)
+{
+	struct pci_dev *pcidev = NULL;
+	struct device *parent_dev = NULL;
+
+	for (parent_dev = dev->tdev.parent; parent_dev != NULL;
+	     parent_dev = parent_dev->parent) {
+		if (dev_is_pci(parent_dev)) {
+			pcidev = to_pci_dev(parent_dev);
+			if (pcidev->vendor == vendor_id)
+				return true;
+			break;
+		}
+	}
+
+	return false;
+}
+
 static int ata_dev_config_ncq(struct ata_device *dev,
 			       char *desc, size_t desc_sz)
 {
@@ -2775,6 +2793,13 @@ static int ata_dev_config_ncq(struct ata_device *dev,
 		snprintf(desc, desc_sz, "NCQ (not used)");
 		return 0;
 	}
+
+	if (dev->horkage & ATA_HORKAGE_NO_NCQ_ON_ATI &&
+	    ata_dev_check_adapter(dev, PCI_VENDOR_ID_ATI)) {
+		snprintf(desc, desc_sz, "NCQ (not used)");
+		return 0;
+	}
+
 	if (ap->flags & ATA_FLAG_NCQ) {
 #ifdef MY_ABC_HERE
 		if(!syno_ata_dev_ncq_compat(dev)) {
@@ -3513,6 +3538,8 @@ void syno_ata_present_print(struct ata_port *ap, const char *eventlog)
 {
 	bool blPresent = false;
 	int iHavePres = 0;
+
+	syno_libata_index_get(ap->scsi_host, SATA_PMP_MAX_PORTS, 0, 0);
 	if (ap->nr_pmp_links == 0) {
 #ifdef MY_ABC_HERE
 #ifdef MY_DEF_HERE
@@ -5046,6 +5073,8 @@ static const struct ata_blacklist_entry ata_device_blacklist [] = {
 	{ " 2GB ATA Flash Disk", "ADMA428M",	ATA_HORKAGE_NODMA },
 	/* Odd clown on sil3726/4726 PMPs */
 	{ "Config  Disk",	NULL,		ATA_HORKAGE_DISABLE },
+	/* Similar story with ASMedia 1092 */
+	{ "ASMT109x- Config",	NULL,		ATA_HORKAGE_DISABLE },
 
 	/* Weird ATAPI devices */
 	{ "TORiSAN DVD-ROM DRD-N216", NULL,	ATA_HORKAGE_MAX_SEC_128 },
@@ -5094,9 +5123,12 @@ static const struct ata_blacklist_entry ata_device_blacklist [] = {
 	{ "ST3320[68]13AS",	"SD1[5-9]",	ATA_HORKAGE_NONCQ |
 						ATA_HORKAGE_FIRMWARE_WARN },
 
-	/* drives which fail FPDMA_AA activation (some may freeze afterwards) */
-	{ "ST1000LM024 HN-M101MBB", "2AR10001",	ATA_HORKAGE_BROKEN_FPDMA_AA },
-	{ "ST1000LM024 HN-M101MBB", "2BA30001",	ATA_HORKAGE_BROKEN_FPDMA_AA },
+	/* drives which fail FPDMA_AA activation (some may freeze afterwards)
+	   the ST disks also have LPM issues */
+	{ "ST1000LM024 HN-M101MBB", "2AR10001",	ATA_HORKAGE_BROKEN_FPDMA_AA |
+						ATA_HORKAGE_NOLPM, },
+	{ "ST1000LM024 HN-M101MBB", "2BA30001",	ATA_HORKAGE_BROKEN_FPDMA_AA |
+						ATA_HORKAGE_NOLPM, },
 	{ "VB0250EAVER",	"HPG7",		ATA_HORKAGE_BROKEN_FPDMA_AA },
 
 	/* Blacklist entries taken from Silicon Image 3124/3132
@@ -5202,6 +5234,12 @@ static const struct ata_blacklist_entry ata_device_blacklist [] = {
 						ATA_HORKAGE_ZERO_AFTER_TRIM, },
 	{ "Samsung SSD 850*",		NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
 						ATA_HORKAGE_ZERO_AFTER_TRIM, },
+	{ "Samsung SSD 860*",		NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
+						ATA_HORKAGE_ZERO_AFTER_TRIM |
+						ATA_HORKAGE_NO_NCQ_ON_ATI, },
+	{ "Samsung SSD 870*",		NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
+						ATA_HORKAGE_ZERO_AFTER_TRIM |
+						ATA_HORKAGE_NO_NCQ_ON_ATI, },
 	{ "FCCT*M500*",			NULL,	ATA_HORKAGE_NO_NCQ_TRIM |
 						ATA_HORKAGE_ZERO_AFTER_TRIM, },
 
@@ -5656,7 +5694,10 @@ int ata_std_qc_defer(struct ata_queued_cmd *qc)
 	return ATA_DEFER_LINK;
 }
 
-void ata_noop_qc_prep(struct ata_queued_cmd *qc) { }
+enum ata_completion_errors ata_noop_qc_prep(struct ata_queued_cmd *qc)
+{
+	return AC_ERR_OK;
+}
 
 /**
  *	ata_sg_init - Associate command with scatter-gather table.
@@ -6472,7 +6513,9 @@ void ata_qc_issue(struct ata_queued_cmd *qc)
 		return;
 	}
 
-	ap->ops->qc_prep(qc);
+	qc->err_mask |= ap->ops->qc_prep(qc);
+	if (unlikely(qc->err_mask))
+		goto err;
 	trace_ata_qc_issue(qc);
 #ifdef MY_ABC_HERE
 	syno_ata_latency_start(qc, blIsBatchHead);
@@ -7147,6 +7190,8 @@ struct ata_port *ata_port_alloc(struct ata_host *host)
 	//syno_libata_index_get will assign slot index to ap->syno_disk_index on success.
 	syno_libata_index_get(ap->scsi_host, SATA_PMP_MAX_PORTS, 0, 0);
 	klist_add_tail(&ap->ata_port_list, &syno_ata_port_head);
+#else /* MY_ABC_HERE */
+	ap->syno_disk_index = -1;
 #endif /* MY_ABC_HERE */
 	return ap;
 }
@@ -7475,7 +7520,7 @@ int ata_host_start(struct ata_host *host)
 			have_stop = 1;
 	}
 
-	if (host->ops->host_stop)
+	if (host->ops && host->ops->host_stop)
 		have_stop = 1;
 
 	if (have_stop) {
@@ -7857,7 +7902,7 @@ int ata_host_register(struct ata_host *host, struct scsi_host_template *sht)
 #else /* MY_ABC_HERE */
 		if (0 < giSynoSpinupGroupNum) {
 #endif /* MY_ABC_HERE */
-			async_schedule(async_port_probe, ap);
+			ap->cookie = async_schedule(async_port_probe, ap);
 			continue;
 		}
 #endif /* MY_ABC_HERE */
@@ -7867,13 +7912,13 @@ int ata_host_register(struct ata_host *host, struct scsi_host_template *sht)
 #else /* MY_ABC_HERE */
 		if (0 == g_syno_hdd_powerup_seq) {
 #endif /* MY_ABC_HERE */
-			async_schedule(async_port_probe, ap);
+			ap->cookie = async_schedule(async_port_probe, ap);
 		} else {
 			ata_port_probe(ap);
 			ata_scsi_scan_host(ap, 1);
 		}
 #else /* MY_ABC_HERE */
-		async_schedule(async_port_probe, ap);
+		ap->cookie = async_schedule(async_port_probe, ap);
 #endif /* MY_ABC_HERE */
 	}
 #ifdef MY_ABC_HERE
@@ -8026,8 +8071,11 @@ void ata_host_detach(struct ata_host *host)
 {
 	int i;
 
-	for (i = 0; i < host->n_ports; i++)
+	for (i = 0; i < host->n_ports; i++) {
+		/* Ensure ata_port probe has completed */
+		async_synchronize_cookie(host->ports[i]->cookie + 1);
 		ata_port_detach(host->ports[i]);
+	}
 
 	/* the host is dead now, dissociate ACPI */
 	ata_acpi_dissociate(host);
@@ -8180,6 +8228,8 @@ static int __init ata_parse_force_one(char **cur,
 		{ "ncq",	.horkage_off	= ATA_HORKAGE_NONCQ },
 		{ "noncqtrim",	.horkage_on	= ATA_HORKAGE_NO_NCQ_TRIM },
 		{ "ncqtrim",	.horkage_off	= ATA_HORKAGE_NO_NCQ_TRIM },
+		{ "noncqati",	.horkage_on	= ATA_HORKAGE_NO_NCQ_ON_ATI },
+		{ "ncqati",	.horkage_off	= ATA_HORKAGE_NO_NCQ_ON_ATI },
 		{ "dump_id",	.horkage_on	= ATA_HORKAGE_DUMP_ID },
 		{ "pio0",	.xfer_mask	= 1 << (ATA_SHIFT_PIO + 0) },
 		{ "pio1",	.xfer_mask	= 1 << (ATA_SHIFT_PIO + 1) },

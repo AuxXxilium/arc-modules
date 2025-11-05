@@ -4,7 +4,7 @@
 # r8101 is the Linux device driver released for Realtek Fast Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2021 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -36,6 +36,7 @@ ENABLE_S5WOL = y
 ENABLE_S5_KEEP_CURR_MAC = n
 ENABLE_EEE = y
 ENABLE_S0_MAGIC_PACKET = n
+CONFIG_CTAP_SHORT_OFF = n
 
 ifneq ($(KERNELRELEASE),)
 	obj-m := r8101.o
@@ -59,6 +60,9 @@ ifneq ($(KERNELRELEASE),)
 	endif
 	ifeq ($(ENABLE_S0_MAGIC_PACKET), y)
 		EXTRA_CFLAGS += -DENABLE_S0_MAGIC_PACKET
+	endif
+	ifeq ($(CONFIG_CTAP_SHORT_OFF), y)
+		EXTRA_CFLAGS += -DCONFIG_CTAP_SHORT_OFF
 	endif
 else
 	BASEDIR := /lib/modules/$(shell uname -r)

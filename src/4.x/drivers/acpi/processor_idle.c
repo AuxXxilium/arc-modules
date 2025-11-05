@@ -48,6 +48,9 @@
 
 #define ACPI_PROCESSOR_CLASS            "processor"
 #define _COMPONENT              ACPI_PROCESSOR_COMPONENT
+
+extern bool amd_e400_c1e_detected;
+
 ACPI_MODULE_NAME("processor_idle");
 
 static unsigned int max_cstate __read_mostly = ACPI_PROCESSOR_MAX_POWER;
@@ -137,9 +140,10 @@ static void lapic_timer_check_state(int state, struct acpi_processor *pr,
 	if (cpu_has(&cpu_data(pr->id), X86_FEATURE_ARAT))
 		return;
 
+	#ifdef CONFIG_X86		
 	if (amd_e400_c1e_detected)
 		type = ACPI_STATE_C1;
-
+	#endif
 	/*
 	 * Check, if one of the previous states already marked the lapic
 	 * unstable

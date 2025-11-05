@@ -1,3 +1,6 @@
 [submodule "src/4.x/drivers/net/ethernet/intel/igc"]
 	path = src/4.x/drivers/net/ethernet/intel/igc
 	url = https://github.com/jim3ma/synology-igc.git
+[submodule "pkgscripts-ng"]
+    path = pkgscripts-ng
+    url = https://github.com/SynologyOpenSource/pkgscripts-ng.git

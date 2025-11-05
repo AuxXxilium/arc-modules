@@ -1,0 +1,123 @@
+IT Linux driver Supported Distro list and supported package list:
+
+###############################################################################
+Red Hat, Cent OS, Oracle Enterprise Linux
+###############################################################################
+ 
+x86_64
+
+#RHEL10
+	el10.0		: (6.12.0-55.9.1.el10_0.x86_64)
+	el10.0_rt	: (6.12.0-55.9.1.el10_0.x86_64+rt)
+
+#RHEL9
+	el9.4		: (5.14.0-427.13.1.el9_4.x86_64)
+	el9.4_rt	: (5.14.0-427.13.1.el9_4.x86_64+rt)
+	el9.5		: (5.14.0-503.11.1.el9_5.x86_64)
+	el9.5_rt	: (5.14.0-503.11.1.el9_5.x86_64+rt)
+	el9.6		: (5.14.0-570.12.1.el9_6.x86_64)
+	el9.6_rt	: (5.14.0-570.12.1.el9_6.x86_64+rt)
+
+
+##############################################################################
+SuSE
+##############################################################################
+ 
+x86_64
+
+#SLES15
+	sles15sp5 : (5.14.21-150500.53)	: (default)
+	sles15sp5_rt : (5.14.21-150500.11-rt)	: (default)
+	sles15sp6 : (6.4.0-150600.21)		: (default)
+	sles15sp6_rt : (6.4.0-150600.6-rt)	: (default)
+	sles15sp7 : (6.4.0-150700.51)   	: (default)
+	sles15sp7_rt : (6.4.0-150700.14-rt)	: (default)
+
+#SLES12
+	
+	sles12sp5 : (4.12.14-120)	: (default)
+
+###############################################################################
+Ubuntu
+###############################################################################
+ 
+Single source DKMS Deb driver package will work for all supported Ubuntu OS
+releases. Please refer driver README for how to use DKMS deb driver package.
+
+x86_64
+
+
+	Ubuntu 22.04.5 	: (5.15.0-119)	LTS
+	Ubuntu 22.04.4 	: (5.15.0-94)	LTS
+	Ubuntu 22.04.3 	: (5.15.0-78)	LTS
+	
+	Ubuntu 24.04 	: (6.8.0-31)	LTS
+	Ubuntu 24.04.1 	: (6.8.0-41)	LTS
+	Ubuntu 24.04.2  : (6.8.0-54)    LTS
+
+ 
+###############################################################################
+Citrix:
+###############################################################################
+ 
+NOTE:
+    Only RPM support is provided for Citrix's XenServer/Hypervisor OSes.
+    Citrix has changed the DUD (Driver Update Disk) process in XenServer/Hypervisor
+    and made it mandatory for ISO images to be signed with GPG keys and
+    the GPG public key must be present in the base OS installation media.
+    Due to this DUD support is dropped for XenServer/Hypervisor.
+    Also, XenServer/Hypervisor OS by default installs out-of-box mpt3sas driver
+    rpm while installing the OS. After installing the OS, user can upgrade to
+    the latest Citrix XenServer/Hypervisor mpt3sas driver rpm provided as below,
+ 
+# rpm -Uvh avago-mpt3sas-30.255.01.00_CitrixXen7.1-1.x86_64.rpm
+
+    Also Citrix Hypervisor CR releases are having same kernel version, So same
+    driver rpm binary which is provided for previous CR release will work for
+    current CR/LTSR release also if kernel version is same. So BRCM will provide
+    only one binary rpm for all the CR/LTSR releases which are having same kernel
+    version.
+ 
+x86_64
+        Citrix8-Update2 : (4.19.0+1)    (LTSR)
+
+
+###############################################################################
+OpenEuler:
+###############################################################################
+Note:
+        Only src RPM support is provided.
+
+x86
+        openeuler22.03  : 5.10.0-182.0.0.95.oe2203sp3.x86_64
+        openeuler24.03  : 6.6.0-98.0.0.103.oe2403sp2.x86_64
+
+arm
+        openeuler20.03  : 4.19.90-2312.1.0.0255.oe2003sp4.aarch64
+        openeuler22.03  : 5.10.0-182.0.0.95.oe2203sp3.aarch64
+
+
+################################################################################
+Debian:
+################################################################################
+
+
+x86_64
+	Debian11.11	:	(5.10.0-32)
+	Debian12.10 	:	(6.1.0-32)
+	Debian12.11     :       (6.1.0-35)
+
+
+NOTE:
+	1. source DKMS Deb driver package will work for above-mentioned debian OS
+	   release. Please refer to the driver README for instructions on how to
+	   use the DKMS deb driver package.
+
+	2. Users should have complete root privileges before installing the driver
+	   DKMS package to avoid warnings about "ldconfig" and "start-stop-daemon"
+	   not being found in the PATH.
+
+	3. In case of a kernel upgrade, if the mpt3sas driver DMKS module
+	   installation fails in the upgraded kernel due to a broken DKMS, the
+	   inbox driver will be installed in the upgraded kernel.
+

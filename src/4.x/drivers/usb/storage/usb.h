@@ -65,6 +65,7 @@ struct us_unusual_dev {
 	int (*initFunction)(struct us_data *);
 };
 
+
 /* Dynamic bitflag definitions (us->dflags): used in set_bit() etc. */
 #define US_FLIDX_URB_ACTIVE	0	/* current_urb is in use    */
 #define US_FLIDX_SG_ACTIVE	1	/* current_sg is in use     */
@@ -199,8 +200,25 @@ extern int usb_stor_post_reset(struct usb_interface *iface);
 extern int usb_stor_probe1(struct us_data **pus,
 		struct usb_interface *intf,
 		const struct usb_device_id *id,
-		struct us_unusual_dev *unusual_dev);
+		struct us_unusual_dev *unusual_dev,
+		struct scsi_host_template *sht);
 extern int usb_stor_probe2(struct us_data *us);
 extern void usb_stor_disconnect(struct usb_interface *intf);
+
+extern void usb_stor_adjust_quirks(struct usb_device *dev,
+		unsigned long *fflags);
+
+#define module_usb_stor_driver(__driver, __sht, __name) \
+static int __init __driver##_init(void) \
+{ \
+	usb_stor_host_template_init(&(__sht), __name, THIS_MODULE); \
+	return usb_register(&(__driver)); \
+} \
+module_init(__driver##_init); \
+static void __exit __driver##_exit(void) \
+{ \
+	usb_deregister(&(__driver)); \
+} \
+module_exit(__driver##_exit)
 
 #endif
