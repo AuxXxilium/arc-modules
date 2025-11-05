@@ -23,13 +23,13 @@ while read PLATFORM KVER; do
   echo $runparam  
   docker run -u `id -u` --rm -t -v "${PWD}/${DIR}":/input -v "/tmp/${PLATFORM}-${KVER}":/output \
     fbelavenuto/syno-compiler:${TOOLKIT_VER} compile-module ${PLATFORM}
-  for M in `ls /tmp/${PLATFORM}-${KVER}`; do
     if [ "${PLATFORM}" = "epyc7002" ]; then
       PLATFORM_DIR="${PLATFORM}-${TOOLKIT_VER}-${KVER}"
     else
       PLATFORM_DIR="${PLATFORM}-${KVER}"
     fi
     rm -rf ${PWD}/../${PLATFORM_DIR}
+  for M in `ls /tmp/${PLATFORM}-${KVER}`; do
     [ -f ~/src/pats/modules/${PLATFORM}/$M ] && \
     cp ~/src/pats/modules/${PLATFORM}/$M "${PWD}/../${PLATFORM_DIR}/" || \
     { mkdir -p "${PWD}/../${PLATFORM_DIR}" && cp /tmp/${PLATFORM}-${KVER}/$M "${PWD}/../${PLATFORM_DIR}/"; }
