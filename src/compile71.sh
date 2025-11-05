@@ -28,7 +28,8 @@ while read PLATFORM KVER; do
         PLATFORM_DIR="${PLATFORM}-${TOOLKIT_VER}-${KVER}"
       else
         PLATFORM_DIR="${PLATFORM}-${KVER}"
-      fi  
+      fi
+      rm -rf ${PWD}/../${PLATFORM_DIR}
       [ -f ~/src/pats/modules/${PLATFORM}/$M ] && \
       cp ~/src/pats/modules/${PLATFORM}/$M "${PWD}/../${PLATFORM_DIR}/" || \
       { mkdir -p "${PWD}/../${PLATFORM_DIR}" && cp /tmp/${PLATFORM}-${KVER}/$M "${PWD}/../${PLATFORM_DIR}/"; }
