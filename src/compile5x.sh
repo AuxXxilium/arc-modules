@@ -21,11 +21,9 @@ while read PLATFORM KVER TOOLKIT_VER; do
     dante90/syno-compiler:${TOOLKIT_VER} compile-module ${PLATFORM}
   for M in `ls /tmp/${PLATFORM}-${KVER}`; do
     PLATFORM_DIR="${PLATFORM}-${TOOLKIT_VER}-${KVER}"
-    [ -f ~/src/pats/modules/${PLATFORM}/$M ] && \
-      # original      
-      cp ~/src/pats/modules/${PLATFORM}/$M "${PWD}/../${PLATFORM_DIR}" || \
-      # compiled
-      cp /tmp/${PLATFORM}-${KVER}/$M "${PWD}/../${PLATFORM_DIR}"
+      [ -f ~/src/pats/modules/${PLATFORM}/$M ] && \
+      cp ~/src/pats/modules/${PLATFORM}/$M "${PWD}/../${PLATFORM_DIR}/" || \
+      { mkdir -p "${PWD}/../${PLATFORM_DIR}" && cp /tmp/${PLATFORM}-${KVER}/$M "${PWD}/../${PLATFORM_DIR}/"; }
       # remove i915 related modules
       [[ -f ${PWD}/../${PLATFORM}-${KVER}/cfbfillrect.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbfillrect.ko 
       [[ -f ${PWD}/../${PLATFORM}-${KVER}/cfbimgblt.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbimgblt.ko 
