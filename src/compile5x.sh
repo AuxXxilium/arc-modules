@@ -2,6 +2,8 @@
 
 set -e
 
+git pull
+
 #if [ -f ../../arpl/PLATFORMS ]; then
 #  cp ../../arpl/PLATFORMS PLATFORMS
 #else
@@ -9,26 +11,16 @@ set -e
 #fi
 
 echo -e "Compiling modules..."
-while read PLATFORM KVER; do
-  [[ ${KVER} = "4.4.180" ]] && TOOLKIT_VER="7.1"
-  [[ ${KVER} = "4.4.320" ]] && TOOLKIT_VER="7.2"
+while read PLATFORM KVER TOOLKIT_VER; do
   [ -n "$1" -a "${PLATFORM}" != "$1" ] && continue
   DIR="${KVER:0:1}.x"
   [ ! -d "${PWD}/${DIR}" ] && continue
+
   mkdir -p "/tmp/${PLATFORM}-${KVER}"
-  #docker run --rm -t -v "${PWD}/${1}/${DIR}":/input -v "${PWD}/../${PLATFORM}-${KVER}":/output \
-  #  fbelavenuto/syno-toolkit:${PLATFORM}-${TOOLKIT_VER} compile-module
-  runparam=$(echo "-u `id -u` --rm -t -v "${PWD}/${DIR}":/input -v "/tmp/${PLATFORM}-${KVER}":/output \
-    dante90/syno-compiler:${TOOLKIT_VER} compile-module ${PLATFORM}")
-  echo $runparam  
   docker run -u `id -u` --rm -t -v "${PWD}/${DIR}":/input -v "/tmp/${PLATFORM}-${KVER}":/output \
     dante90/syno-compiler:${TOOLKIT_VER} compile-module ${PLATFORM}
   for M in `ls /tmp/${PLATFORM}-${KVER}`; do
-      if [ "${PLATFORM}" = "epyc7002" ]; then
-        PLATFORM_DIR="${PLATFORM}-${TOOLKIT_VER}-${KVER}"
-      else
-        PLATFORM_DIR="${PLATFORM}-${KVER}"
-      fi  
+    PLATFORM_DIR="${PLATFORM}-${TOOLKIT_VER}-${KVER}"
     [ -f ~/src/pats/modules/${PLATFORM}/$M ] && \
       # original      
       cp ~/src/pats/modules/${PLATFORM}/$M "${PWD}/../${PLATFORM_DIR}" || \
@@ -48,4 +40,5 @@ while read PLATFORM KVER; do
       [[ -f ${PWD}/../${PLATFORM}-${KVER}/i2c-algo-bit.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko
   done
   rm -rf /tmp/${PLATFORM}-${KVER}
-done < V2BAPPURLEY
+  
+done < PLATFORMS5X
