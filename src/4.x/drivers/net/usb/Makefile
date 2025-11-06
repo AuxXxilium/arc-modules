@@ -48,7 +48,6 @@ obj-$(CONFIG_USB_NET_CDC_NCM)	+= cdc_ncm.o
 #obj-$(CONFIG_USB_NET_CH9200)	+= ch9200.o
 
 obj-$(CONFIG_USB_RTL8152)	+= r8152.o
-obj-$(CONFIG_USB_RTL8153_ECM)   += r8153_ecm.o
 
 CONFIG_CTAP_SHORT = ON
 #       EXTRA_CFLAGS += -DRTL8152_S5_WOL

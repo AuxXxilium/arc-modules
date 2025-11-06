@@ -12,4 +12,3 @@ obj-m += r8127/
 #obj-m += r8152/ #--> USb
 obj-$(CONFIG_R8168) += r8168/
 obj-$(CONFIG_R8169) += r8169/
-obj-m += rtl8150/
