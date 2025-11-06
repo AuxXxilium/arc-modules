@@ -64,7 +64,7 @@ main() {
   echo -e "Compiling modules..."
 
   # Check if the unified PLATFORMS file exists
-  PLATFORMS_FILE="PLATFORMS_ALL"
+  PLATFORMS_FILE="PLATFORMS"
   [ ! -f "${PLATFORMS_FILE}" ] && { echo "Error: ${PLATFORMS_FILE} not found."; exit 1; }
 
   # Read the unified PLATFORMS file
