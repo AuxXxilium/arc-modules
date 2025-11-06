@@ -14,14 +14,21 @@ compile_modules() {
 
   mkdir -p "/tmp/${PLATFORM}-${KVER}"
 
+  # Check if the defines.<platform> file exists
+  DEFINES_FILE="${PWD}/${DIR}/defines.${PLATFORM}"
+  if [ ! -f "${DEFINES_FILE}" ]; then
+    echo "Error: ${DEFINES_FILE} not found for platform ${PLATFORM}."
+    exit 1
+  fi
+
   # Prepare the Docker run parameters
   runparam=$(echo "-u $(id -u) --rm -t -v \"${PWD}/${DIR}\":/input -v \"/tmp/${PLATFORM}-${KVER}\":/output \
-    ${DOCKER_IMAGE} compile-module ${PLATFORM}")
+    ${DOCKER_IMAGE} compile-module ${PLATFORM} --kconfig ${DEFINES_FILE}")
   echo $runparam
 
   # Run the Docker container
   docker run -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input -v "/tmp/${PLATFORM}-${KVER}":/output \
-    ${DOCKER_IMAGE} compile-module ${PLATFORM}
+    ${DOCKER_IMAGE} compile-module ${PLATFORM} --kconfig ${DEFINES_FILE}
 
   # Handle output directory naming
   if [ "${PLATFORM}" = "epyc7002" ] || [ "${PLATFORM}" = "geminilakenk" ] || [ "${PLATFORM}" = "r1000nk" ] || [ "${PLATFORM}" = "v1000nk" ]; then
