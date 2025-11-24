@@ -28706,36 +28706,68 @@ static struct pci_driver rtl8168_pci_driver = {
 #endif
 };
 
-static int __init
+static bool rtl8168_registered = false;
+static int __init 
 rtl8168_init_module(void)
 {
+    int ret = 0;   
+    if (rtl8168_registered) {
+        pr_info("r8168: already registered, skipping init\n");
+        return -EEXIST;
+    }   
 #ifdef ENABLE_R8168_PROCFS
-        rtl8168_proc_module_init();
+    rtl8168_proc = proc_create("r8168", 0, init_net.proc_net, &rtl8168_proc_fops);
+    if (!rtl8168_proc) {
+        pr_info("r8168: proc entry already exists, skipping proc create\n");
+        return -EEXIST;
+    }
+    rtl8168_proc_module_init();
 #endif
+  
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-        return pci_register_driver(&rtl8168_pci_driver);
+    ret = pci_register_driver(&rtl8168_pci_driver);
 #else
-        return pci_module_init(&rtl8168_pci_driver);
+    ret = pci_module_init(&rtl8168_pci_driver);
 #endif
+    if (ret) {
+        pr_info("r8168: pci_register_driver failed: %d\n", ret);
+#ifdef ENABLE_R8168_PROCFS
+        if (rtl8168_proc) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+            remove_proc_entry("r8168", init_net.proc_net);
+#else
+            remove_proc_entry("r8168", proc_net);
+#endif
+            rtl8168_proc = NULL;
+        }
+#endif
+        return ret;
+   }
+   rtl8168_registered = true;
+
+    return 0;
 }
 
 static void __exit
 rtl8168_cleanup_module(void)
 {
+    if (rtl8168_registered) {
         pci_unregister_driver(&rtl8168_pci_driver);
+        rtl8168_registered = false;
+    }   
 #ifdef ENABLE_R8168_PROCFS
-        if (rtl8168_proc) {
+    if (rtl8168_proc) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
-                remove_proc_subtree(MODULENAME, init_net.proc_net);
+        remove_proc_subtree(MODULENAME, init_net.proc_net);
 #else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
-                remove_proc_entry(MODULENAME, init_net.proc_net);
+        remove_proc_entry(MODULENAME, init_net.proc_net);
 #else
-                remove_proc_entry(MODULENAME, proc_net);
+        remove_proc_entry(MODULENAME, proc_net);
 #endif  //LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
 #endif  //LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
-                rtl8168_proc = NULL;
-        }
+        rtl8168_proc = NULL;
+    }
 #endif
 }
 
