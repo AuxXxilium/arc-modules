@@ -22,7 +22,7 @@
  * what PHYs form a wide port based on the port_identifier attribute,
  * which is the same for all PHYs in a port.
  */
-#define CONFIG_SCSI_SAS_ATTRS_MODULE 1
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/jiffies.h>
@@ -1229,15 +1229,16 @@ int sas_read_port_mode_page(struct scsi_device *sdev)
 	char *buffer = kzalloc(BUF_SIZE, GFP_KERNEL), *msdata;
 	struct sas_end_device *rdev = sas_sdev_to_rdev(sdev);
 	struct scsi_mode_data mode_data;
-	int error;
+	int res, error;
 
 	if (!buffer)
 		return -ENOMEM;
 
-	error = scsi_mode_sense(sdev, 1, 0x19, buffer, BUF_SIZE, 30*HZ, 3,
-				&mode_data, NULL);
+	res = scsi_mode_sense(sdev, 1, 0x19, buffer, BUF_SIZE, 30*HZ, 3,
+			      &mode_data, NULL);
 
-	if (error)
+	error = -EINVAL;
+	if (!scsi_status_is_good(res))
 		goto out;
 
 	msdata = buffer +  mode_data.header_length +
