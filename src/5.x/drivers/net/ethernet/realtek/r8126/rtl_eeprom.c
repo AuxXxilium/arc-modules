@@ -44,6 +44,10 @@
 #include "r8126.h"
 #include "rtl_eeprom.h"
 
+#define dev_page_is_reusable(page) \
+        (likely(PageCompound(page)) && \
+         !page_is_pfmemalloc((struct page *)page))
+
 //-------------------------------------------------------------------
 //rtl8126_eeprom_type():
 //  tell the eeprom type
