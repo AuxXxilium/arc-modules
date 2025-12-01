@@ -68,10 +68,10 @@ main() {
   [ ! -f "${PLATFORMS_FILE}" ] && { echo "Error: ${PLATFORMS_FILE} not found."; exit 1; }
 
   # Read the unified PLATFORMS file
-  while read PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+  while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
     # Skip comments and empty lines
     [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
-    [ -n "$1" -a "${PLATFORM}" != "$1" ] && continue
+    [ -n "$1" ] && [ "${PLATFORM}" != "$1" ] && continue
     compile_modules "${PLATFORM}" "${KVER}" "${TOOLKIT_VER}" "${DOCKER_IMAGE}"
   done < "${PLATFORMS_FILE}"
 }
