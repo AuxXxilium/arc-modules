@@ -75,9 +75,6 @@ main() {
     # Trim whitespace
     PLATFORM=$(echo "${PLATFORM}" | xargs)
 
-    # Debugging output
-    echo "Processing PLATFORM=${PLATFORM}, ARG=$1"
-
     # Case-insensitive comparison
     [ -n "$1" ] && [ "$(echo "${PLATFORM}" | tr '[:upper:]' '[:lower:]')" != "$(echo "$1" | tr '[:upper:]' '[:lower:]')" ] && continue
 
