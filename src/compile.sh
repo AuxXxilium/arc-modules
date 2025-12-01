@@ -71,7 +71,16 @@ main() {
   while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
     # Skip comments and empty lines
     [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
-    [ -n "$1" ] && [ "${PLATFORM}" != "$1" ] && continue
+
+    # Trim whitespace
+    PLATFORM=$(echo "${PLATFORM}" | xargs)
+
+    # Debugging output
+    echo "Processing PLATFORM=${PLATFORM}, ARG=$1"
+
+    # Case-insensitive comparison
+    [ -n "$1" ] && [ "$(echo "${PLATFORM}" | tr '[:upper:]' '[:lower:]')" != "$(echo "$1" | tr '[:upper:]' '[:lower:]')" ] && continue
+
     compile_modules "${PLATFORM}" "${KVER}" "${TOOLKIT_VER}" "${DOCKER_IMAGE}"
   done < "${PLATFORMS_FILE}"
 }
