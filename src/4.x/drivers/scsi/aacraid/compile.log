@@ -1,6 +1,0 @@
-/opt/dsm-kernel/epyc7002/redpill-modules/aacraid/linit.c:40:10: fatal error: linux/pci-aspm.h: No such file or directory
- #include <linux/pci-aspm.h>
-          ^~~~~~~~~~~~~~~~~~
-compilation terminated.
-make[1]: *** [scripts/Makefile.build:280: /opt/dsm-kernel/epyc7002/redpill-modules/aacraid/linit.o] Error 1
-make: *** [Makefile:1822: /opt/dsm-kernel/epyc7002/redpill-modules/aacraid] Error 2
