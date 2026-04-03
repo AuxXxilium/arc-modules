@@ -134,7 +134,7 @@ obj-y				+= mmc/
 #ifndef CONFIG_ARCH_USES_GETTIMEOFFSET
 #obj-y				+= clocksource/
 #endif
-#obj-$(CONFIG_DCA)		+= dca/
+obj-y		+= dca/
 #obj-$(CONFIG_HID)		+= hid/
 #obj-$(CONFIG_PPC_PS3)		+= ps3/
 #obj-$(CONFIG_OF)		+= of/

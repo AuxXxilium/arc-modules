@@ -655,7 +655,10 @@ dma_fence_default_wait_cb(struct dma_fence *fence, struct dma_fence_cb *cb)
 	struct default_wait_cb *wait =
 		container_of(cb, struct default_wait_cb, base);
 
-	wake_up_state(wait->task, TASK_NORMAL);
+	// 기존 (modpost WARNING 유발)
+	//wake_up_state(wait->task, TASK_NORMAL);
+	// 교체 (EXPORT_SYMBOL 되어 있음)
+	wake_up_process(wait->task);
 }
 
 /**
@@ -863,3 +866,5 @@ dma_fence_init(struct dma_fence *fence, const struct dma_fence_ops *ops,
 	trace_dma_fence_init(fence);
 }
 EXPORT_SYMBOL(dma_fence_init);
+
+MODULE_LICENSE("GPL v2");

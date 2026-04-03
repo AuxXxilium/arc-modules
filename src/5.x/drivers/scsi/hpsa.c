@@ -798,6 +798,11 @@ static ssize_t sas_address_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "0x%016llx\n", sas_address);
 }
 
+static inline bool is_disk_or_zbc(const struct hpsa_scsi_dev_t *hdev)
+{
+	return hdev->devtype == TYPE_DISK || hdev->devtype == TYPE_ZBC;
+}
+
 static ssize_t host_show_hp_ssd_smart_path_enabled(struct device *dev,
 	     struct device_attribute *attr, char *buf)
 {
@@ -818,7 +823,7 @@ static ssize_t host_show_hp_ssd_smart_path_enabled(struct device *dev,
 	offload_enabled = hdev->offload_enabled;
 	spin_unlock_irqrestore(&h->lock, flags);
 
-	if (hdev->devtype == TYPE_DISK || hdev->devtype == TYPE_ZBC)
+	if (is_disk_or_zbc(hdev))
 		return snprintf(buf, 20, "%d\n", offload_enabled);
 	else
 		return snprintf(buf, 40, "%s\n",
@@ -885,8 +890,7 @@ static ssize_t path_info_show(struct device *dev,
 				PAGE_SIZE - output_len,
 				"PORT: %.2s ",
 				phys_connector);
-		if ((hdev->devtype == TYPE_DISK || hdev->devtype == TYPE_ZBC) &&
-			hdev->expose_device) {
+		if (is_disk_or_zbc(hdev) && hdev->expose_device) {
 			if (box == 0 || box == 0xFF) {
 				output_len += scnprintf(buf + output_len,
 					PAGE_SIZE - output_len,
@@ -1753,8 +1757,7 @@ static void hpsa_figure_phys_disk_ptrs(struct ctlr_info *h,
 		for (j = 0; j < ndevices; j++) {
 			if (dev[j] == NULL)
 				continue;
-			if (dev[j]->devtype != TYPE_DISK &&
-			    dev[j]->devtype != TYPE_ZBC)
+			if (!is_disk_or_zbc(dev[j]))
 				continue;
 			if (is_logical_device(dev[j]))
 				continue;
@@ -1807,8 +1810,7 @@ static void hpsa_update_log_drive_phys_drive_ptrs(struct ctlr_info *h,
 	for (i = 0; i < ndevices; i++) {
 		if (dev[i] == NULL)
 			continue;
-		if (dev[i]->devtype != TYPE_DISK &&
-		    dev[i]->devtype != TYPE_ZBC)
+		if (!is_disk_or_zbc(dev[i]))
 			continue;
 		if (!is_logical_device(dev[i]))
 			continue;
@@ -4055,9 +4057,8 @@ static int hpsa_update_device_info(struct ctlr_info *h,
 		goto bail_out;
 	}
 
-	if ((this_device->devtype == TYPE_DISK ||
-		this_device->devtype == TYPE_ZBC) &&
-		is_logical_dev_addr_mode(scsi3addr)) {
+	if (is_disk_or_zbc(this_device) &&
+			is_logical_dev_addr_mode(scsi3addr)) {
 		unsigned char volume_offline;
 
 		hpsa_get_raid_level(h, scsi3addr, &this_device->raid_level);
@@ -4601,7 +4602,8 @@ static void hpsa_update_scsi_devices(struct ctlr_info *h)
 		 */
 		if (MASKED_DEVICE(lunaddrbytes) &&
 				this_device->physical_device) {
-			if (h->nvram_hba_mode_enabled)
+			if (is_disk_or_zbc(this_device) &&
+					h->nvram_hba_mode_enabled)
 				this_device->expose_device = 1;
 			else
 				this_device->expose_device = 0;

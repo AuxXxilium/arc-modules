@@ -44,17 +44,17 @@ compile_modules() {
     cp ~/src/pats/modules/${PLATFORM}/$M "${PWD}/../${PLATFORM_DIR}/" || \
     { mkdir -p "${PWD}/../${PLATFORM_DIR}" && cp /tmp/${PLATFORM}-${KVER}/$M "${PWD}/../${PLATFORM_DIR}/"; }
     # Remove unwanted modules
-    [[ -f ${PWD}/../${PLATFORM_DIR}/cfbfillrect.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbfillrect.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/cfbimgblt.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbimgblt.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/cfbcopyarea.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbcopyarea.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/video.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/video.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/backlight.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/backlight.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/button.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/button.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/drm_kms_helper.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/drm_kms_helper.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/drm.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/drm.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/fb.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/fb.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/fbdev.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/fbdev.ko 
-    [[ -f ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/cfbfillrect.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbfillrect.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/cfbimgblt.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbimgblt.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/cfbcopyarea.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbcopyarea.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/video.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/video.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/backlight.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/backlight.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/button.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/button.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/drm_kms_helper.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/drm_kms_helper.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/drm.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/drm.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/fb.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/fb.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/fbdev.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/fbdev.ko 
+    # [[ -f ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko
   done
   rm -rf /tmp/${PLATFORM}-${KVER}
 }

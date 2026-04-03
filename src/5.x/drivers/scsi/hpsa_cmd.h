@@ -807,8 +807,10 @@ struct bmic_identify_controller {
 	u8	reserved_8[32];
 };
 
+
 /* ssacli calls this bit "Hba Mode Supported". */
 #define YET_MORE_CTLR_FLAG_HBA_MODE_SUPP (1 << 25)
+
 
 struct bmic_identify_physical_device {
 	u8    scsi_bus;          /* SCSI Bus number on controller */

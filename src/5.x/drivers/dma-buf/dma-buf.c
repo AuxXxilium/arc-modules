@@ -43,18 +43,25 @@ static struct dma_buf_list db_list;
 
 static char *dmabuffs_dname(struct dentry *dentry, char *buffer, int buflen)
 {
-	struct dma_buf *dmabuf;
-	char name[DMA_BUF_NAME_LEN];
-	size_t ret = 0;
+    struct dma_buf *dmabuf;
+    char name[DMA_BUF_NAME_LEN];
+    size_t ret = 0;
+    char temp[256];
+    int sz;
 
-	dmabuf = dentry->d_fsdata;
-	spin_lock(&dmabuf->name_lock);
-	if (dmabuf->name)
-		ret = strlcpy(name, dmabuf->name, DMA_BUF_NAME_LEN);
-	spin_unlock(&dmabuf->name_lock);
+    dmabuf = dentry->d_fsdata;
+    spin_lock(&dmabuf->name_lock);
+    if (dmabuf->name)
+        ret = strlcpy(name, dmabuf->name, DMA_BUF_NAME_LEN);
+    spin_unlock(&dmabuf->name_lock);
 
-	return dynamic_dname(dentry, buffer, buflen, "/%s:%s",
-			     dentry->d_name.name, ret > 0 ? name : "");
+    // dynamic_dname() 인라인 대체
+    sz = snprintf(temp, sizeof(temp), "/%s:%s",
+                  dentry->d_name.name, ret > 0 ? name : "") + 1;
+    if (sz > buflen)
+        return ERR_PTR(-ENAMETOOLONG);
+    buffer += buflen - sz;
+    return memcpy(buffer, temp, sz);
 }
 
 static void dma_buf_release(struct dentry *dentry)
@@ -1462,4 +1469,5 @@ static void __exit dma_buf_deinit(void)
 	dma_buf_uninit_debugfs();
 	kern_unmount(dma_buf_mnt);
 }
-__exitcall(dma_buf_deinit);
+module_exit(dma_buf_deinit);   // ← __exitcall → module_exit
+

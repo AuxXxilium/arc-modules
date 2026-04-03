@@ -23,7 +23,7 @@
 #obj-$(CONFIG_SCSI)		+= scsi_mod.o
 #obj-$(CONFIG_BLK_SCSI_REQUEST)	+= scsi_common.o
 
-#obj-$(CONFIG_RAID_ATTRS)	+= raid_class.o
+obj-$(CONFIG_RAID_ATTRS)	+= raid_class.o
 
 # --- NOTE ORDERING HERE ---
 # For kernel non-modular link, transport attributes need to
@@ -99,7 +99,7 @@ obj-$(CONFIG_SCSI_HPSA)		+= hpsa.o
 #obj-m	+= megaraid.o
 #obj-$(CONFIG_MEGARAID_NEWGEN)	+= megaraid/
 obj-y	+= megaraid/
-obj-y	+= mpt3sas/
+obj-${CONFIG_SCSI_MPT3SAS}	+= mpt3sas/
 #obj-$(CONFIG_SCSI_UFSHCD)	+= ufs/
 #obj-$(CONFIG_SCSI_ACARD)	+= atp870u.o
 #obj-$(CONFIG_SCSI_SUNESP)	+= esp_scsi.o	sun_esp.o
@@ -148,7 +148,7 @@ obj-$(CONFIG_VMWARE_PVSCSI)	+= vmw_pvscsi.o
 #obj-$(CONFIG_CHR_DEV_ST)	+= st.o
 #obj-$(CONFIG_BLK_DEV_SD)	+= sd_mod.o
 #obj-$(CONFIG_BLK_DEV_SR)	+= sr_mod.o
-obj-$(CONFIG_CHR_DEV_SG)	+= sg.o
+#obj-$(CONFIG_CHR_DEV_SG)	+= sg.o
 #obj-$(CONFIG_CHR_DEV_SCH)	+= ch.o
 #obj-$(CONFIG_SCSI_ENCLOSURE)	+= ses.o
 
