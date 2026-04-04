@@ -156,6 +156,9 @@ jobs:
             MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.parm }}"
           fi
 
+          echo "strip modules"
+          [ -d "${MODULES_PATH}" ] && find "${MODULES_PATH}" -name "*.ko" -exec strip --strip-unneeded {} \;
+
           echo "copy 3rd modules"
           [ -d "${MODULES_PATH}" ] && cp -Rvf "${MODULES_PATH}/." "${{ github.workspace }}/source/output"
 
