@@ -2,6 +2,24 @@
 
 set -e
 
+# Color output for better readability
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+log_info() {
+  echo -e "${GREEN}[INFO]${NC} $*"
+}
+
+log_warn() {
+  echo -e "${YELLOW}[WARN]${NC} $*"
+}
+
+log_error() {
+  echo -e "${RED}[ERROR]${NC} $*"
+}
+
 # Function to compile modules for a given platform and kernel version
 compile_modules() {
   local PLATFORM=$1
@@ -12,74 +30,277 @@ compile_modules() {
   DIR="${KVER:0:1}.x"
   [ ! -d "${PWD}/${DIR}" ] && return
 
-  mkdir -p "/tmp/${PLATFORM}-${KVER}"
-
   # Check if the defines.<platform> file exists
   DEFINES_FILE="${PWD}/${DIR}/defines.${PLATFORM}"
   if [ ! -f "${DEFINES_FILE}" ]; then
-    echo "Error: ${DEFINES_FILE} not found for platform ${PLATFORM}."
-    exit 1
+    log_error "Error: ${DEFINES_FILE} not found for platform ${PLATFORM}."
+    return 1
   fi
-
-  # Prepare the Docker run parameters
-  runparam=$(echo "-u $(id -u) --rm -t -v \"${PWD}/${DIR}\":/input -v \"/tmp/${PLATFORM}-${KVER}\":/output \
-    ${DOCKER_IMAGE} compile-module ${PLATFORM} --kconfig ${DEFINES_FILE}")
-  echo $runparam
 
   # Run the Docker container
-  docker run -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input -v "/tmp/${PLATFORM}-${KVER}":/output \
-    ${DOCKER_IMAGE} compile-module ${PLATFORM} --kconfig ${DEFINES_FILE}
-
-  # Handle output directory naming
-  if [ "${PLATFORM}" = "epyc7002" ] || [ "${PLATFORM}" = "geminilakenk" ] || [ "${PLATFORM}" = "r1000nk" ] || [ "${PLATFORM}" = "v1000nk" ]; then
-    PLATFORM_DIR="${PLATFORM}-${TOOLKIT_VER}-${KVER}"
+  log_info "Starting Docker compilation for ${PLATFORM} (kernel ${KVER})"
+  if docker run -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input \
+    ${DOCKER_IMAGE} compile-module "${PLATFORM}"; then
+    log_info "Docker compilation completed successfully"
   else
-    PLATFORM_DIR="${PLATFORM}-${KVER}"
+    log_error "Docker compilation failed"
+    return 1
   fi
-  rm -rf "${PWD}/../${PLATFORM_DIR}"
 
-  # Copy compiled modules and clean up
-  for M in $(ls /tmp/${PLATFORM}-${KVER}); do
-    [ -f ~/src/pats/modules/${PLATFORM}/$M ] && \
-    cp ~/src/pats/modules/${PLATFORM}/$M "${PWD}/../${PLATFORM_DIR}/" || \
-    { mkdir -p "${PWD}/../${PLATFORM_DIR}" && cp /tmp/${PLATFORM}-${KVER}/$M "${PWD}/../${PLATFORM_DIR}/"; }
-    # Remove unwanted modules
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/cfbfillrect.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbfillrect.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/cfbimgblt.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbimgblt.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/cfbcopyarea.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/cfbcopyarea.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/video.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/video.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/backlight.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/backlight.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/button.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/button.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/drm_kms_helper.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/drm_kms_helper.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/drm.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/drm.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/fb.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/fb.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/fbdev.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/fbdev.ko 
-    # [[ -f ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko ]] && rm ${PWD}/../${PLATFORM_DIR}/i2c-algo-bit.ko
+  # Docker outputs to ${PWD}/../${PLATFORM}-${KVER}, not /tmp/
+  # Check actual output location
+  local OUTPUT_DIR="${PWD}/../${PLATFORM}-${KVER}"
+  
+  if [ ! -d "${OUTPUT_DIR}" ]; then
+    log_error "Output directory ${OUTPUT_DIR} does not exist"
+    return 1
+  fi
+
+  local FILE_COUNT=$(ls -1 "${OUTPUT_DIR}" 2>/dev/null | wc -l)
+  if [ "$FILE_COUNT" -eq 0 ]; then
+    log_error "No files in ${OUTPUT_DIR}"
+    return 1
+  fi
+
+  log_info "Found $FILE_COUNT file(s) in ${OUTPUT_DIR}"
+
+  # Handle output directory naming and packaging
+  if [[ "${KVER}" == 5* ]]; then
+    PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
+  else
+    PACKAGE_NAME="${PLATFORM}-${KVER}.tgz"
+  fi
+
+  # Create tarball at script location
+  local SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  local TARBALL_PATH="${SCRIPT_DIR}/../${PACKAGE_NAME}"
+  
+  log_info "Creating tarball: ${TARBALL_PATH}"
+  if tar -czf "${TARBALL_PATH}" -C "${OUTPUT_DIR}" .; then
+    if [ -f "${TARBALL_PATH}" ]; then
+      local SIZE=$(du -h "${TARBALL_PATH}" | awk '{print $1}')
+      log_info "✓ Successfully created: ${TARBALL_PATH} (${SIZE})"
+    else
+      log_error "✗ Tarball not found after creation"
+      return 1
+    fi
+  else
+    log_error "✗ Failed to create tarball"
+    return 1
+  fi
+
+  # Cleanup
+  log_info "Cleaning up: ${OUTPUT_DIR}"
+  rm -rf "${OUTPUT_DIR}"
+}
+
+# Function to compile binary for a given platform
+compile_binary() {
+  local PLATFORM=$1
+  local BUILD_SCRIPT=$2
+  local DOCKER_IMAGE=$3
+
+  # Check if version directory exists (use major version for output dir)
+  local DIR_PATTERN=$(echo "${BUILD_SCRIPT}" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
+  local DIR="${DIR_PATTERN:0:1}.x"
+  
+  if [ -z "$DIR" ]; then
+    log_error "Error: Could not determine version directory from build script name"
+    return 1
+  fi
+  
+  [ ! -d "${PWD}/${DIR}" ] && return
+
+  # Check if build script exists
+  BUILD_FILE="${PWD}/${DIR}/${BUILD_SCRIPT}"
+  if [ ! -f "${BUILD_FILE}" ]; then
+    log_error "Error: ${BUILD_FILE} not found for platform ${PLATFORM}."
+    return 1
+  fi
+
+  # Create output directory for Docker
+  local OUTPUT_DIR="${PWD}/../${PLATFORM}-binary"
+  mkdir -p "${OUTPUT_DIR}"
+
+  # Run the Docker container
+  log_info "Starting binary compilation for ${PLATFORM} using ${BUILD_SCRIPT}"
+  if docker run --privileged -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input -v "${OUTPUT_DIR}":/output \
+    ${DOCKER_IMAGE} compile-binary "${PLATFORM}" "${BUILD_SCRIPT}"; then
+    log_info "Docker binary compilation completed successfully"
+  else
+    log_error "Docker binary compilation failed"
+    return 1
+  fi
+
+  # Check output location
+  if [ ! -d "${OUTPUT_DIR}" ]; then
+    log_error "Output directory ${OUTPUT_DIR} does not exist"
+    return 1
+  fi
+
+  local FILE_COUNT=$(ls -1 "${OUTPUT_DIR}" 2>/dev/null | wc -l)
+  if [ "$FILE_COUNT" -eq 0 ]; then
+    log_error "No files in ${OUTPUT_DIR}"
+    return 1
+  fi
+
+  log_info "Found $FILE_COUNT file(s) in ${OUTPUT_DIR}"
+
+  # Create tarball with platform name only
+  local PACKAGE_NAME="${PLATFORM}-binary.tgz"
+  local SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  local TARBALL_PATH="${SCRIPT_DIR}/../${PACKAGE_NAME}"
+  
+  log_info "Creating tarball: ${TARBALL_PATH}"
+  if tar -czf "${TARBALL_PATH}" -C "${OUTPUT_DIR}" .; then
+    if [ -f "${TARBALL_PATH}" ]; then
+      local SIZE=$(du -h "${TARBALL_PATH}" | awk '{print $1}')
+      log_info "✓ Successfully created: ${TARBALL_PATH} (${SIZE})"
+    else
+      log_error "✗ Tarball not found after creation"
+      return 1
+    fi
+  else
+    log_error "✗ Failed to create tarball"
+    return 1
+  fi
+
+  # Cleanup
+  log_info "Cleaning up: ${OUTPUT_DIR}"
+  rm -rf "${OUTPUT_DIR}"
+}
+
+# Function to display platform and version selection menu
+select_platforms() {
+  local PLATFORMS_FILE="PLATFORMS"
+  [ ! -f "${PLATFORMS_FILE}" ] && { log_error "${PLATFORMS_FILE} not found."; exit 1; }
+
+  # Extract unique toolkit versions
+  local -a versions=()
+  while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+    [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+    TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+    if [[ ! " ${versions[@]} " =~ " ${TOOLKIT_VER} " ]]; then
+      versions+=("$TOOLKIT_VER")
+    fi
+  done < "${PLATFORMS_FILE}"
+  
+  # Sort versions
+  IFS=$'\n' versions=($(sort <<<"${versions[*]}"))
+  unset IFS
+
+  # Display version selection menu
+  log_info "=== Available DSM/Toolkit Versions ==="
+  echo ""
+  for i in "${!versions[@]}"; do
+    printf "%2d) %s\n" $((i+1)) "${versions[$i]}"
   done
-  rm -rf /tmp/${PLATFORM}-${KVER}
+  
+  echo ""
+  echo "Enter version numbers to build (space-separated, or 'all' for all versions):"
+  read -r -p "> " version_selection
+  
+  echo ""
+  
+  # Determine selected versions
+  local -a selected_versions=()
+  if [ -z "$version_selection" ] || [ "$version_selection" = "all" ]; then
+    selected_versions=("${versions[@]}")
+  else
+    for num in $version_selection; do
+      if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#versions[@]}" ]; then
+        selected_versions+=("${versions[$((num-1))]}")
+      else
+        log_warn "Invalid version number $num"
+      fi
+    done
+  fi
+  
+  # For each selected version, show platform selection
+  for SELECTED_VERSION in "${selected_versions[@]}"; do
+    log_info "=== Platforms for version ${SELECTED_VERSION} ==="
+    echo ""
+    
+    # Parse platforms for this version
+    local -a platforms=()
+    local -a platform_data=()
+    local idx=1
+    
+    while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+      [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+      TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+      [ "$TOOLKIT_VER" != "$SELECTED_VERSION" ] && continue
+      
+      PLATFORM=$(echo "${PLATFORM}" | xargs)
+      KVER=$(echo "${KVER}" | xargs)
+      DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
+      
+      platforms+=("$PLATFORM")
+      platform_data+=("$KVER|$DOCKER_IMAGE")
+      printf "%2d) %-20s (kernel %s)\n" "$idx" "$PLATFORM" "$KVER"
+      idx=$((idx + 1))
+    done < "${PLATFORMS_FILE}"
+    
+    echo ""
+    echo "Enter platform numbers to build (space-separated, or 'all' for all platforms):"
+    read -r -p "> " platform_selection
+    
+    echo ""
+    
+    if [ -z "$platform_selection" ] || [ "$platform_selection" = "all" ]; then
+      for i in "${!platforms[@]}"; do
+        local data="${platform_data[$i]}"
+        local KVER="${data%%|*}"
+        local DOCKER_IMAGE="${data#*|}"
+        compile_modules "${platforms[$i]}" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
+      done
+    else
+      for num in $platform_selection; do
+        if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#platforms[@]}" ]; then
+          local idx=$((num - 1))
+          local data="${platform_data[$idx]}"
+          local KVER="${data%%|*}"
+          local DOCKER_IMAGE="${data#*|}"
+          compile_modules "${platforms[$idx]}" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
+        else
+          log_warn "Invalid platform number $num"
+        fi
+      done
+    fi
+  done
 }
 
 # Main function to handle different platforms and toolkits
 main() {
-  echo -e "Compiling modules..."
+  log_info "=== Module Compiler (Docker) ==="
+  echo ""
 
   # Check if the unified PLATFORMS file exists
   PLATFORMS_FILE="PLATFORMS"
-  [ ! -f "${PLATFORMS_FILE}" ] && { echo "Error: ${PLATFORMS_FILE} not found."; exit 1; }
+  [ ! -f "${PLATFORMS_FILE}" ] && { log_error "${PLATFORMS_FILE} not found."; exit 1; }
 
-  # Read the unified PLATFORMS file
-  while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
-    # Skip comments and empty lines
-    [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+  # If platform provided as argument, compile that platform
+  if [ -n "$1" ]; then
+    log_info "Compiling modules for platform: $1"
 
-    # Trim whitespace
-    PLATFORM=$(echo "${PLATFORM}" | xargs)
+    while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+      # Skip comments and empty lines
+      [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+      PLATFORM=$(echo "${PLATFORM}" | xargs)
 
-    # Case-insensitive comparison
-    [ -n "$1" ] && [ "$(echo "${PLATFORM}" | tr '[:upper:]' '[:lower:]')" != "$(echo "$1" | tr '[:upper:]' '[:lower:]')" ] && continue
+      # Case-insensitive comparison
+      [ "$(echo "${PLATFORM}" | tr '[:upper:]' '[:lower:]')" != "$(echo "$1" | tr '[:upper:]' '[:lower:]')" ] && continue
 
-    compile_modules "${PLATFORM}" "${KVER}" "${TOOLKIT_VER}" "${DOCKER_IMAGE}"
-  done < "${PLATFORMS_FILE}"
+      KVER=$(echo "${KVER}" | xargs)
+      TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+      DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
+
+      compile_modules "${PLATFORM}" "${KVER}" "${TOOLKIT_VER}" "${DOCKER_IMAGE}"
+    done < "${PLATFORMS_FILE}"
+  else
+    # Interactive platform selection
+    select_platforms
+  fi
 }
 
 # Run the main function
