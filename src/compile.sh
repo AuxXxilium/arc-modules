@@ -37,19 +37,19 @@ compile_modules() {
     return 1
   fi
 
+  # Create output directory for Docker
+  local OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
+  mkdir -p "${OUTPUT_DIR}"
+
   # Run the Docker container
   log_info "Starting Docker compilation for ${PLATFORM} (kernel ${KVER})"
-  if docker run -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input \
+  if docker run -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input -v "${OUTPUT_DIR}":/output \
     ${DOCKER_IMAGE} compile-module "${PLATFORM}"; then
     log_info "Docker compilation completed successfully"
   else
     log_error "Docker compilation failed"
     return 1
   fi
-
-  # Docker outputs to ${PWD}/../${PLATFORM}-${KVER}, not /tmp/
-  # Check actual output location
-  local OUTPUT_DIR="${PWD}/../${PLATFORM}-${KVER}"
   
   if [ ! -d "${OUTPUT_DIR}" ]; then
     log_error "Output directory ${OUTPUT_DIR} does not exist"
@@ -73,7 +73,7 @@ compile_modules() {
 
   # Create tarball at script location
   local SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  local TARBALL_PATH="${SCRIPT_DIR}/../${PACKAGE_NAME}"
+  local TARBALL_PATH="${SCRIPT_DIR}/${PACKAGE_NAME}"
   
   log_info "Creating tarball: ${TARBALL_PATH}"
   if tar -czf "${TARBALL_PATH}" -C "${OUTPUT_DIR}" .; then
@@ -88,10 +88,6 @@ compile_modules() {
     log_error "✗ Failed to create tarball"
     return 1
   fi
-
-  # Cleanup
-  log_info "Cleaning up: ${OUTPUT_DIR}"
-  rm -rf "${OUTPUT_DIR}"
 }
 
 # Function to compile binary for a given platform
@@ -119,7 +115,7 @@ compile_binary() {
   fi
 
   # Create output directory for Docker
-  local OUTPUT_DIR="${PWD}/../${PLATFORM}-binary"
+  local OUTPUT_DIR="${PWD}/output/${PLATFORM}-binary"
   mkdir -p "${OUTPUT_DIR}"
 
   # Run the Docker container
@@ -129,12 +125,6 @@ compile_binary() {
     log_info "Docker binary compilation completed successfully"
   else
     log_error "Docker binary compilation failed"
-    return 1
-  fi
-
-  # Check output location
-  if [ ! -d "${OUTPUT_DIR}" ]; then
-    log_error "Output directory ${OUTPUT_DIR} does not exist"
     return 1
   fi
 
@@ -149,7 +139,7 @@ compile_binary() {
   # Create tarball with platform name only
   local PACKAGE_NAME="${PLATFORM}-binary.tgz"
   local SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-  local TARBALL_PATH="${SCRIPT_DIR}/../${PACKAGE_NAME}"
+  local TARBALL_PATH="${SCRIPT_DIR}/${PACKAGE_NAME}"
   
   log_info "Creating tarball: ${TARBALL_PATH}"
   if tar -czf "${TARBALL_PATH}" -C "${OUTPUT_DIR}" .; then
@@ -164,10 +154,6 @@ compile_binary() {
     log_error "✗ Failed to create tarball"
     return 1
   fi
-
-  # Cleanup
-  log_info "Cleaning up: ${OUTPUT_DIR}"
-  rm -rf "${OUTPUT_DIR}"
 }
 
 # Function to display platform and version selection menu
