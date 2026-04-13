@@ -180,8 +180,13 @@ jobs:
           if [ "${{ matrix.platform }}" = "epyc7002" ]; then
             THIRD="${ROOT_PATH}/thirdparty/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
             if [ -d "${THIRD}" ]; then
-              ls "${THIRD}"/*.ko 2>/dev/null | xargs -n1 basename | sed 's/\.ko$//' | sort -u > ${ROOT_PATH}/source/whitelist.txt || true
-              echo "[I] whitelist count: $(wc -l < ${ROOT_PATH}/source/whitelist.txt 2>/dev/null || echo 0)"
+              ls "${THIRD}"/*.ko 2>/dev/null \
+                | xargs -n1 basename \
+                | sed 's/\.ko$//' \
+                | sort -u \
+                | grep -Ev '^(ttm|drm.*|i915.*|intel-gtt|hdmi|dmabuf|apex|gasket|intel_auxiliary|intel_idle|intel-lpss)$' \
+                > ${ROOT_PATH}/source/whitelist.txt || true
+              echo "[I] whitelist count (filtered): $(wc -l < ${ROOT_PATH}/source/whitelist.txt 2>/dev/null || echo 0)"
             fi
           fi
 
