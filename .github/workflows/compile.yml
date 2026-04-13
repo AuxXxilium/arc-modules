@@ -215,25 +215,34 @@ jobs:
             while read MOD; do
               [ -z "${MOD}" ] && continue
               MOD_SAFE="${MOD//-/_}"
-              MF=$(grep -Rsl --include=Makefile -E "(^|[[:space:]])${MOD_SAFE}\.o([[:space:]]|$)" /source/input | head -n1 || true)
+
+              # Makefile 里有的模块名用 '-'，有的用 '_'，两种都尝试
+              MF=$(grep -Rsl --include=Makefile -E "(^|[[:space:]])(${MOD}\.o|${MOD_SAFE}\.o)([[:space:]]|$)" /source/input | head -n1 || true)
               if [ -z "${MF}" ]; then
                 echo "[W] skip ${MOD}: Makefile entry not found"
                 continue
               fi
               MODDIR=$(dirname "${MF}")
-              echo "[I] build ${MOD} (${MOD_SAFE}) in ${MODDIR}"
-              make -j`nproc` -C "${KSRC}" M="${MODDIR}" ${PARMS} "${MOD_SAFE}.ko" || {
+
+              OBJ_NAME=""
+              if grep -Eq "(^|[[:space:]])${MOD}\.o([[:space:]]|$)" "${MF}"; then
+                OBJ_NAME="${MOD}"
+              elif grep -Eq "(^|[[:space:]])${MOD_SAFE}\.o([[:space:]]|$)" "${MF}"; then
+                OBJ_NAME="${MOD_SAFE}"
+              fi
+
+              [ -z "${OBJ_NAME}" ] && { echo "[W] skip ${MOD}: cannot resolve obj name"; continue; }
+
+              echo "[I] build ${MOD} (obj=${OBJ_NAME}) in ${MODDIR}"
+              make -j`nproc` -C "${KSRC}" M="${MODDIR}" ${PARMS} "${OBJ_NAME}.ko" || {
                 echo "[W] build failed for ${MOD}, skip"
                 continue
               }
-              if [ -f "${MODDIR}/${MOD_SAFE}.ko" ]; then
-                strip -g "${MODDIR}/${MOD_SAFE}.ko" || true
-                echo "Copying ${MOD_SAFE}.ko"
-                cp "${MODDIR}/${MOD_SAFE}.ko" "/source/output"
-              elif [ -f "${MODDIR}/${MOD}.ko" ]; then
-                strip -g "${MODDIR}/${MOD}.ko" || true
-                echo "Copying ${MOD}.ko"
-                cp "${MODDIR}/${MOD}.ko" "/source/output"
+
+              if [ -f "${MODDIR}/${OBJ_NAME}.ko" ]; then
+                strip -g "${MODDIR}/${OBJ_NAME}.ko" || true
+                echo "Copying ${OBJ_NAME}.ko"
+                cp "${MODDIR}/${OBJ_NAME}.ko" "/source/output"
               fi
             done < /source/whitelist.txt
           else
