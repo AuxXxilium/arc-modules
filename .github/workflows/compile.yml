@@ -91,6 +91,19 @@ jobs:
             platform: v1000
             parm: "4.4.302"
 
+          - version: 7.3
+            platform: epyc7002
+            parm: "5.10.55"
+          - version: 7.3
+            platform: geminilakenk
+            parm: "5.10.55"
+          - version: 7.3
+            platform: r1000nk
+            parm: "5.10.55"
+          - version: 7.3
+            platform: v1000nk
+            parm: "5.10.55"
+
     runs-on: ubuntu-latest
 
     steps:
@@ -160,6 +173,15 @@ jobs:
 
           sudo cp -a ${ROOT_PATH}/src/${KVER:0:1}.x ${ROOT_PATH}/source/input
 
+          # epyc7002 白名单（优先使用 thirdparty 目录中的已验证模块名）
+          if [ "${{ matrix.platform }}" = "epyc7002" ]; then
+            THIRD="${ROOT_PATH}/thirdparty/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
+            if [ -d "${THIRD}" ]; then
+              ls "${THIRD}"/*.ko 2>/dev/null | xargs -n1 basename | sed 's/\.ko$//' | sort -u > ${ROOT_PATH}/source/whitelist.txt || true
+              echo "[I] whitelist count: $(wc -l < ${ROOT_PATH}/source/whitelist.txt 2>/dev/null || echo 0)"
+            fi
+          fi
+
           sudo cp -a ${ROOT_PATH}/source ${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/
 
       - name: Make
@@ -167,6 +189,7 @@ jobs:
           ROOT_PATH=${{ github.workspace }}
 
           sudo chroot build_env/ds.${{ matrix.platform }}-${{ matrix.version }} << "EOF"
+          set -e
           sed -i 's/^CFLAGS=/#CFLAGS=/g; s/^CXXFLAGS=/#CXXFLAGS=/g' /env${BUILD_ARCH}.mak
           while read line; do if [ ${line:0:1} != "#" ]; then export ${line%%=*}="${line#*=}"; fi; done < /env${BUILD_ARCH}.mak
           cd /source/input
@@ -176,17 +199,46 @@ jobs:
             PARMS="`cat "defines.${{ matrix.platform }}" | xargs`"
           else
             echo "[E] ${{ matrix.platform }}-${{ matrix.version }}"
+            exit 1
           fi
-          make -j`nproc` -C "${KSRC}" M="${PWD}" ${PARMS} modules
-          while read F; do
-            strip -g "${F}"
-            echo "Copying `basename ${F}`"
-            cp "${F}" "/source/output"
-          done < <(find ${PWD} -name \*.ko)
+
+          if [ "${{ matrix.platform }}" = "epyc7002" ] && [ -s "/source/whitelist.txt" ]; then
+            echo "[I] whitelist compile mode for epyc7002"
+            while read MOD; do
+              [ -z "${MOD}" ] && continue
+              MF=$(grep -Rsl --include=Makefile -E "(^|[[:space:]])${MOD}\.o([[:space:]]|$)" /source/input | head -n1 || true)
+              if [ -z "${MF}" ]; then
+                echo "[W] skip ${MOD}: Makefile entry not found"
+                continue
+              fi
+              MODDIR=$(dirname "${MF}")
+              echo "[I] build ${MOD} in ${MODDIR}"
+              make -j`nproc` -C "${KSRC}" M="${MODDIR}" ${PARMS} "${MOD}.ko" || {
+                echo "[W] build failed for ${MOD}, skip"
+                continue
+              }
+              if [ -f "${MODDIR}/${MOD}.ko" ]; then
+                strip -g "${MODDIR}/${MOD}.ko" || true
+                echo "Copying ${MOD}.ko"
+                cp "${MODDIR}/${MOD}.ko" "/source/output"
+              fi
+            done < /source/whitelist.txt
+          else
+            make -j`nproc` -C "${KSRC}" M="${PWD}" ${PARMS} modules
+            while read F; do
+              strip -g "${F}"
+              echo "Copying `basename ${F}`"
+              cp "${F}" "/source/output"
+            done < <(find ${PWD} -name \*.ko)
+          fi
           EOF
 
           sudo cp -a ${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/output ${ROOT_PATH}/source/
           sudo chmod a+rw -R ${ROOT_PATH}/source/output
+
+          KO_COUNT=$(find ${ROOT_PATH}/source/output -maxdepth 1 -name '*.ko' | wc -l)
+          echo "[I] KO count: ${KO_COUNT}"
+          [ "${KO_COUNT}" -gt 0 ] || { echo "[E] no .ko generated"; exit 1; }
 
       - name: Tar to Artifacts
         run: |
