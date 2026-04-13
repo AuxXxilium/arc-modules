@@ -142,7 +142,10 @@ jobs:
           while read line; do if [ ${line:0:1} != "#" ]; then export ${line%%=*}="${line#*=}"; fi; done < /env${BUILD_ARCH}.mak
           if [ -f "${KSRC}/Makefile" ]; then
             # gcc issue "unrecognized command-line option '--param=allow-store-data-races=0'".
-            [ "${{ matrix.version }}" == "7.2" ] && sed -i 's/--param=allow-store-data-races=0/--allow-store-data-races/g' ${KSRC}/Makefile
+            # DSM 7.2/7.3 toolchain on GitHub runner may not support this param, patch kernel Makefile flags.
+            if [ "${{ matrix.version }}" = "7.2" ] || [ "${{ matrix.version }}" = "7.3" ]; then
+              sed -i 's/--param=allow-store-data-races=0/--allow-store-data-races/g' ${KSRC}/Makefile
+            fi
 
             VERSION=`cat ${KSRC}/Makefile | grep ^VERSION | awk -F' ' '{print $3}'`
             PATCHLEVEL=`cat ${KSRC}/Makefile | grep ^PATCHLEVEL | awk -F' ' '{print $3}'`
