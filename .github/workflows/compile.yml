@@ -184,7 +184,7 @@ jobs:
                 | xargs -n1 basename \
                 | sed 's/\.ko$//' \
                 | sort -u \
-                | grep -Ev '^(ttm|drm.*|i915.*|intel-gtt|hdmi|dmabuf|apex|gasket|intel_auxiliary|intel_idle|intel-lpss|mvsas|mpt3sas|mptbase|mptctl|mptsas|mptscsih|mptspi)$' \
+                | grep -Ev '^(ttm|drm.*|i915.*|intel-gtt|hdmi|dmabuf|apex|gasket|intel_auxiliary|intel_idle|intel-lpss|mvsas|mpt3sas|mptbase|mptctl|mptsas|mptscsih|mptspi|megaraid_sas)$' \
                 > ${ROOT_PATH}/source/whitelist.txt || true
               echo "[I] whitelist count (filtered): $(wc -l < ${ROOT_PATH}/source/whitelist.txt 2>/dev/null || echo 0)"
             fi
@@ -214,18 +214,23 @@ jobs:
             echo "[I] whitelist compile mode for epyc7002"
             while read MOD; do
               [ -z "${MOD}" ] && continue
-              MF=$(grep -Rsl --include=Makefile -E "(^|[[:space:]])${MOD}\.o([[:space:]]|$)" /source/input | head -n1 || true)
+              MOD_SAFE="${MOD//-/_}"
+              MF=$(grep -Rsl --include=Makefile -E "(^|[[:space:]])${MOD_SAFE}\.o([[:space:]]|$)" /source/input | head -n1 || true)
               if [ -z "${MF}" ]; then
                 echo "[W] skip ${MOD}: Makefile entry not found"
                 continue
               fi
               MODDIR=$(dirname "${MF}")
-              echo "[I] build ${MOD} in ${MODDIR}"
-              make -j`nproc` -C "${KSRC}" M="${MODDIR}" ${PARMS} "${MOD}.ko" || {
+              echo "[I] build ${MOD} (${MOD_SAFE}) in ${MODDIR}"
+              make -j`nproc` -C "${KSRC}" M="${MODDIR}" ${PARMS} "${MOD_SAFE}.ko" || {
                 echo "[W] build failed for ${MOD}, skip"
                 continue
               }
-              if [ -f "${MODDIR}/${MOD}.ko" ]; then
+              if [ -f "${MODDIR}/${MOD_SAFE}.ko" ]; then
+                strip -g "${MODDIR}/${MOD_SAFE}.ko" || true
+                echo "Copying ${MOD_SAFE}.ko"
+                cp "${MODDIR}/${MOD_SAFE}.ko" "/source/output"
+              elif [ -f "${MODDIR}/${MOD}.ko" ]; then
                 strip -g "${MODDIR}/${MOD}.ko" || true
                 echo "Copying ${MOD}.ko"
                 cp "${MODDIR}/${MOD}.ko" "/source/output"
