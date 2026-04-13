@@ -184,7 +184,7 @@ jobs:
                 | xargs -n1 basename \
                 | sed 's/\.ko$//' \
                 | sort -u \
-                | grep -Ev '^(ttm|drm.*|i915.*|intel-gtt|hdmi|dmabuf|apex|gasket|intel_auxiliary|intel_idle|intel-lpss|mvsas)$' \
+                | grep -Ev '^(ttm|drm.*|i915.*|intel-gtt|hdmi|dmabuf|apex|gasket|intel_auxiliary|intel_idle|intel-lpss|mvsas|mpt3sas|mptbase|mptctl|mptsas|mptscsih|mptspi)$' \
                 > ${ROOT_PATH}/source/whitelist.txt || true
               echo "[I] whitelist count (filtered): $(wc -l < ${ROOT_PATH}/source/whitelist.txt 2>/dev/null || echo 0)"
             fi
