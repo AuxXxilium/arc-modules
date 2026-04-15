@@ -113,6 +113,13 @@ jobs:
           OUTPUT_DIR="${ROOT_PATH}/source/output/${OUT_NAME}"
           mkdir -p "${OUTPUT_DIR}"
 
+          # 修正部分 trace 头文件中遗留的绝对路径（/source/input），避免 docker 模式 /tmp/input 下编译失败
+          if [[ "${{ matrix.parm }}" == 5* ]]; then
+            find "${SRC_DIR}" -type f -name "*_trace.h" -print0 | while IFS= read -r -d '' F; do
+              sed -i 's|/source/input|/tmp/input|g' "${F}" || true
+            done
+          fi
+
           echo "[I] image=${{ matrix.docker_image }} platform=${{ matrix.platform }} kver=${{ matrix.parm }} ver=${{ matrix.version }}"
           docker run --rm -t \
             -v "${SRC_DIR}":/input \
