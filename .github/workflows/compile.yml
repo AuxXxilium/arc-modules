@@ -99,13 +99,17 @@ jobs:
         run: |
           set -euo pipefail
           ROOT_PATH=${{ github.workspace }}
+          VERSION='${{ matrix.version }}'
+          PLATFORM='${{ matrix.platform }}'
+          KVER='${{ matrix.parm }}'
+          DOCKER_IMAGE='${{ matrix.docker_image }}'
 
-          if [[ "${{ matrix.parm }}" == 5* ]]; then
+          if [[ "${KVER}" == 5* ]]; then
             SRC_DIR="${ROOT_PATH}/src/5.x"
-            OUT_NAME="${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
+            OUT_NAME="${PLATFORM}-${VERSION}-${KVER}"
           else
             SRC_DIR="${ROOT_PATH}/src/4.x"
-            OUT_NAME="${{ matrix.platform }}-${{ matrix.parm }}"
+            OUT_NAME="${PLATFORM}-${KVER}"
           fi
 
           [ -d "${SRC_DIR}" ] || { echo "[E] missing source dir: ${SRC_DIR}"; exit 1; }
@@ -114,17 +118,17 @@ jobs:
           mkdir -p "${OUTPUT_DIR}"
 
           # 修正部分 trace 头文件中遗留的绝对路径（/source/input），避免 docker 模式 /tmp/input 下编译失败
-          if [[ "${{ matrix.parm }}" == 5* ]]; then
+          if [[ "${KVER}" == 5* ]]; then
             find "${SRC_DIR}" -type f -name "*_trace.h" -print0 | while IFS= read -r -d '' F; do
               sed -i 's|/source/input|/tmp/input|g' "${F}" || true
             done
           fi
 
-          echo "[I] image=${{ matrix.docker_image }} platform=${{ matrix.platform }} kver=${{ matrix.parm }} ver=${{ matrix.version }}"
-          
+          echo "[I] image=${DOCKER_IMAGE} platform=${PLATFORM} kver=${KVER} ver=${VERSION}"
+
           # 检查是否有预编译的 .ko 在 thirdparty 目录
-          THIRDPARTY_DIR="${ROOT_PATH}/thirdparty/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
-          if [ -d "${THIRDPARTY_DIR}" ] && [ "$(ls -A "${THIRDPARTY_DIR}" 2>/dev/null)" ]; then
+          THIRDPARTY_DIR="${ROOT_PATH}/thirdparty/${PLATFORM}-${VERSION}-${KVER}"
+          if [ -d "${THIRDPARTY_DIR}" ] && compgen -G "${THIRDPARTY_DIR}/*.ko" > /dev/null; then
             echo "[I] 使用预编译模块 from thirdparty"
             cp -n "${THIRDPARTY_DIR}"/*.ko "${OUTPUT_DIR}/" 2>/dev/null || true
           else
@@ -133,11 +137,8 @@ jobs:
               -v "${SRC_DIR}":/input \
               -v "${OUTPUT_DIR}":/output \
               -w /input \
-              "${{ matrix.docker_image }}" \
-              compile-module "${{ matrix.platform }}" 2>&1 || true
-            
-            # 从 Docker 的 /output 目录复制 .ko 文件
-            # 注意：compile-module 在容器内可能已将 .ko 放在 /output，如果失败也可能已有部分产物
+              "${DOCKER_IMAGE}" \
+              compile-module "${PLATFORM}" 2>&1 || true
           fi
 
           FILE_COUNT=$(find "${OUTPUT_DIR}" -maxdepth 1 -name "*.ko" | wc -l)
