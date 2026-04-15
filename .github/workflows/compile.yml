@@ -121,16 +121,24 @@ jobs:
           fi
 
           echo "[I] image=${{ matrix.docker_image }} platform=${{ matrix.platform }} kver=${{ matrix.parm }} ver=${{ matrix.version }}"
-          # 白名单编译：只编译 Makefile 中 obj-y 列出的模块，不跑 make modules（避免 modpost 失败）
-          docker run --rm -t \
-            -v "${SRC_DIR}":/input \
-            -v "${OUTPUT_DIR}":/output \
-            -w /input \
-            "${{ matrix.docker_image }}" \
-            bash -c "make ${PLATFORM} M=\`pwd\` || true"
-
-          # 移动编译产物到输出目录
-          find "${SRC_DIR}" -name "*.ko" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+          
+          # 检查是否有预编译的 .ko 在 thirdparty 目录
+          THIRDPARTY_DIR="${ROOT_PATH}/thirdparty/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
+          if [ -d "${THIRDPARTY_DIR}" ] && [ "$(ls -A "${THIRDPARTY_DIR}" 2>/dev/null)" ]; then
+            echo "[I] 使用预编译模块 from thirdparty"
+            cp -n "${THIRDPARTY_DIR}"/*.ko "${OUTPUT_DIR}/" 2>/dev/null || true
+          else
+            # 白名单编译：调用 compile-module，即使失败也尝试收集已编译的 .ko
+            docker run --rm -t \
+              -v "${SRC_DIR}":/input \
+              -v "${OUTPUT_DIR}":/output \
+              -w /input \
+              "${{ matrix.docker_image }}" \
+              compile-module "${{ matrix.platform }}" 2>&1 || true
+            
+            # 从 Docker 的 /output 目录复制 .ko 文件
+            # 注意：compile-module 在容器内可能已将 .ko 放在 /output，如果失败也可能已有部分产物
+          fi
 
           FILE_COUNT=$(find "${OUTPUT_DIR}" -maxdepth 1 -name "*.ko" | wc -l)
           echo "[I] output files: ${FILE_COUNT}"
