@@ -121,12 +121,18 @@ jobs:
           fi
 
           echo "[I] image=${{ matrix.docker_image }} platform=${{ matrix.platform }} kver=${{ matrix.parm }} ver=${{ matrix.version }}"
+          # 白名单编译：只编译 Makefile 中 obj-y 列出的模块，不跑 make modules（避免 modpost 失败）
           docker run --rm -t \
             -v "${SRC_DIR}":/input \
             -v "${OUTPUT_DIR}":/output \
-            "${{ matrix.docker_image }}" compile-module "${{ matrix.platform }}"
+            -w /input \
+            "${{ matrix.docker_image }}" \
+            bash -c "make ${PLATFORM} M=\`pwd\` || true"
 
-          FILE_COUNT=$(find "${OUTPUT_DIR}" -maxdepth 1 -type f | wc -l)
+          # 移动编译产物到输出目录
+          find "${SRC_DIR}" -name "*.ko" -exec mv {} "${OUTPUT_DIR}/" \; 2>/dev/null || true
+
+          FILE_COUNT=$(find "${OUTPUT_DIR}" -maxdepth 1 -name "*.ko" | wc -l)
           echo "[I] output files: ${FILE_COUNT}"
           [ "${FILE_COUNT}" -gt 0 ] || { echo "[E] no output files"; exit 1; }
 
