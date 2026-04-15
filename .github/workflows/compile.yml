@@ -61,7 +61,8 @@ jobs:
               --arg version "${TOOLKIT_VER}" \
               --arg platform "${PLATFORM}" \
               --arg parm "${KVER}" \
-              '.include += [{version:$version,platform:$platform,parm:$parm}]')
+              --arg docker_image "${DOCKER_IMAGE}" \
+              '.include += [{version:$version,platform:$platform,parm:$parm,docker_image:$docker_image}]')
           done < "${FILE}"
 
           echo "matrix=$(echo "${MATRIX}" | jq -c)" >> "$GITHUB_OUTPUT"
@@ -93,105 +94,54 @@ jobs:
           git config --global user.name "AuxXxilium"
           sudo timedatectl set-timezone "Europe/Berlin"
 
-      - name: Get EnvDeploy
+      - name: Compile by DOCKER_IMAGE
+        shell: bash
         run: |
+          set -euo pipefail
           ROOT_PATH=${{ github.workspace }}
 
-          git clone https://github.com/SynologyOpenSource/pkgscripts-ng.git ${ROOT_PATH}/pkgscripts-ng
-          cd ${ROOT_PATH}/pkgscripts-ng
-          git checkout DSM${{ matrix.version }}
-          sudo ./EnvDeploy -v ${{ matrix.version }} -l  # Get Available platforms
-          sudo ./EnvDeploy -q -v ${{ matrix.version }} -p ${{ matrix.platform }}
-
-          # ENV
-          mkdir -p ${ROOT_PATH}/source
-
-          ENV_PATH=${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}
-          sudo cp -al ${ROOT_PATH}/pkgscripts-ng ${ENV_PATH}/
-
-          sudo chroot ${ENV_PATH} << "EOF"
-          cd pkgscripts
-
-          version=${{ matrix.version }}; [ ${version:0:1} -gt 6 ] && sed -i 's/print(" ".join(kernels))/pass #&/' ProjectDepends.py
-          sed -i '/PLATFORM_FAMILY/a\\techo "PRODUCT=$PRODUCT" >> $file\n\techo "KSRC=$KERNEL_SEARCH_PATH" >> $file\n\techo "LINUX_SRC=$KERNEL_SEARCH_PATH" >> $file' include/build
-          ./SynoBuild -c -p ${{ matrix.platform }}
-
-          while read line; do if [ ${line:0:1} != "#" ]; then export ${line%%=*}="${line#*=}"; fi; done < /env${BUILD_ARCH}.mak
-          if [ -f "${KSRC}/Makefile" ]; then
-            # gcc issue "unrecognized command-line option '--param=allow-store-data-races=0'".
-            if [ "${{ matrix.version }}" = "7.2" ] || [ "${{ matrix.version }}" = "7.3" ]; then
-              sed -i 's/--param=allow-store-data-races=0/--allow-store-data-races/g' ${KSRC}/Makefile
-            fi
-
-            VERSION=`cat ${KSRC}/Makefile | grep ^VERSION | awk -F' ' '{print $3}'`
-            PATCHLEVEL=`cat ${KSRC}/Makefile | grep ^PATCHLEVEL | awk -F' ' '{print $3}'`
-            SUBLEVEL=`cat ${KSRC}/Makefile | grep ^SUBLEVEL | awk -F' ' '{print $3}'`
-            [ -f "/env32.mak" ] && echo "KVER=${VERSION}.${PATCHLEVEL}.${SUBLEVEL}" >> /env32.mak
-            [ -f "/env64.mak" ] && echo "KVER=${VERSION}.${PATCHLEVEL}.${SUBLEVEL}" >> /env64.mak
-            CCVER=`$CC --version | head -n 1 | awk -F' ' '{print $3}'`
-            [ -f "/env32.mak" ] && echo "CCVER=${CCVER}" >> /env32.mak
-            [ -f "/env64.mak" ] && echo "CCVER=${CCVER}" >> /env64.mak
-          fi
-          EOF
-
-          [ -f ${ENV_PATH}/env64.mak ] && ENV_FILE=${ENV_PATH}/env64.mak || ([ -f ${ENV_PATH}/env32.mak ] && ENV_FILE=${ENV_PATH}/env32.mak)
-          if [ -n "${ENV_FILE}" ]; then
-            KVER=`grep 'KVER=' ${ENV_FILE} | awk -F'=' '{print $2}'`
-            CCVER=`grep 'CCVER=' ${ENV_FILE} | awk -F'=' '{print $2}'`
-            [ -n "${KVER}" ] && echo "KVER=${KVER}" >> $GITHUB_ENV
-            [ -n "${CCVER}" ] && echo "CCVER=${CCVER}" >> $GITHUB_ENV
-          fi
-
-      - name: Get Src
-        run: |
-          ROOT_PATH=${{ github.workspace }}
-
-          mkdir -p ${ROOT_PATH}/source/output
-          KVER=${{ env.KVER }}
-
-          sudo cp -a ${ROOT_PATH}/src/${KVER:0:1}.x ${ROOT_PATH}/source/input
-          sudo cp -a ${ROOT_PATH}/source ${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/
-
-      - name: Make
-        run: |
-          ROOT_PATH=${{ github.workspace }}
-
-          sudo chroot build_env/ds.${{ matrix.platform }}-${{ matrix.version }} << "EOF"
-          set -e
-          sed -i 's/^CFLAGS=/#CFLAGS=/g; s/^CXXFLAGS=/#CXXFLAGS=/g' /env${BUILD_ARCH}.mak
-          while read line; do if [ ${line:0:1} != "#" ]; then export ${line%%=*}="${line#*=}"; fi; done < /env${BUILD_ARCH}.mak
-          cd /source/input
-          [ -z "`grep 'env.mak' Makefile`" ] && sed -i '1 i include /env.mak' Makefile
-
-          if [ -f "defines.${{ matrix.platform }}" ]; then
-            PARMS="`cat "defines.${{ matrix.platform }}" | xargs`"
+          if [[ "${{ matrix.parm }}" == 5* ]]; then
+            SRC_DIR="${ROOT_PATH}/src/5.x"
+            OUT_NAME="${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
           else
-            echo "[E] ${{ matrix.platform }}-${{ matrix.version }}"
-            exit 1
+            SRC_DIR="${ROOT_PATH}/src/4.x"
+            OUT_NAME="${{ matrix.platform }}-${{ matrix.parm }}"
           fi
-          make -j`nproc` -C "${KSRC}" M="${PWD}" ${PARMS} modules
-          while read F; do
-            strip -g "${F}"
-            echo "Copying `basename ${F}`"
-            cp "${F}" "/source/output"
-          done < <(find ${PWD} -name \*.ko)
-          EOF
 
-          sudo cp -a ${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/output ${ROOT_PATH}/source/
-          sudo chmod a+rw -R ${ROOT_PATH}/source/output
+          [ -d "${SRC_DIR}" ] || { echo "[E] missing source dir: ${SRC_DIR}"; exit 1; }
+
+          OUTPUT_DIR="${ROOT_PATH}/source/output/${OUT_NAME}"
+          mkdir -p "${OUTPUT_DIR}"
+
+          echo "[I] image=${{ matrix.docker_image }} platform=${{ matrix.platform }} kver=${{ matrix.parm }} ver=${{ matrix.version }}"
+          docker run -u $(id -u) --rm -t \
+            -v "${SRC_DIR}":/input \
+            -v "${OUTPUT_DIR}":/output \
+            "${{ matrix.docker_image }}" compile-module "${{ matrix.platform }}"
+
+          FILE_COUNT=$(find "${OUTPUT_DIR}" -maxdepth 1 -type f | wc -l)
+          echo "[I] output files: ${FILE_COUNT}"
+          [ "${FILE_COUNT}" -gt 0 ] || { echo "[E] no output files"; exit 1; }
 
       - name: Tar to Artifacts
+        shell: bash
         run: |
-          if [ ! -d "${{ github.workspace }}/source/output" ]; then
-            mkdir -p "${{ github.workspace }}/source/output"
-            chmod a+rw -R "${{ github.workspace }}/source/output"
+          set -euo pipefail
+          ROOT_PATH=${{ github.workspace }}
+
+          if [[ "${{ matrix.parm }}" == 5* ]]; then
+            OUT_NAME="${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
+            PKG_NAME="${OUT_NAME}.tgz"
+          else
+            OUT_NAME="${{ matrix.platform }}-${{ matrix.parm }}"
+            PKG_NAME="${OUT_NAME}.tgz"
           fi
 
-          if [ "${{ matrix.platform }}" = "epyc7002" ]; then
-            tar caf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
-          else
-            tar caf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
-          fi
+          OUTPUT_DIR="${ROOT_PATH}/source/output/${OUT_NAME}"
+          [ -d "${OUTPUT_DIR}" ] || { echo "[E] missing output dir: ${OUTPUT_DIR}"; exit 1; }
+
+          mkdir -p "${ROOT_PATH}/source"
+          tar -zcf "${ROOT_PATH}/source/${PKG_NAME}" -C "${OUTPUT_DIR}" .
 
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
@@ -199,7 +149,3 @@ jobs:
           name: ${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}
           path: |
             ${{ github.workspace }}/source/*.tgz
-
-      - name: clean
-        run: |
-          sudo rm -rf ${{ github.workspace }}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/*
