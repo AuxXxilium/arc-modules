@@ -114,7 +114,7 @@ jobs:
           mkdir -p "${OUTPUT_DIR}"
 
           echo "[I] image=${{ matrix.docker_image }} platform=${{ matrix.platform }} kver=${{ matrix.parm }} ver=${{ matrix.version }}"
-          docker run -u $(id -u) --rm -t \
+          docker run --rm -t \
             -v "${SRC_DIR}":/input \
             -v "${OUTPUT_DIR}":/output \
             "${{ matrix.docker_image }}" compile-module "${{ matrix.platform }}"
