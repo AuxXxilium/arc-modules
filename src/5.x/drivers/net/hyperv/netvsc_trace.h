@@ -11,7 +11,7 @@
 #define TRACE_INCLUDE_FILE netvsc_trace
 /* This part must be outside protection */
 #undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH /source/input/drivers/net/hyperv
+#define TRACE_INCLUDE_PATH /tmp/input/drivers/net/hyperv
 
 TRACE_DEFINE_ENUM(RNDIS_MSG_PACKET);
 TRACE_DEFINE_ENUM(RNDIS_MSG_INDICATE);
