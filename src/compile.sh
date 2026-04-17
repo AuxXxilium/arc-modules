@@ -65,11 +65,7 @@ compile_modules() {
   log_info "Found $FILE_COUNT file(s) in ${OUTPUT_DIR}"
 
   # Handle output directory naming and packaging
-  if [[ "${KVER}" == 5* ]]; then
-    PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
-  else
-    PACKAGE_NAME="${PLATFORM}-${KVER}.tgz"
-  fi
+  PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
 
   # Create tarball at script location
   local SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
