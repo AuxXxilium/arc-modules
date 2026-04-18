@@ -41,40 +41,6 @@ jobs:
     strategy:
       matrix:
         include:
-          - version: 7.1
-            platform: apollolake
-            parm: "4.4.180"
-          - version: 7.1
-            platform: broadwell
-            parm: "4.4.180"
-          - version: 7.1
-            platform: broadwellnk
-            parm: "4.4.180"
-          - version: 7.1
-            platform: broadwellnkv2
-            parm: "4.4.180"
-          - version: 7.1
-            platform: broadwellntbap
-            parm: "4.4.180"
-          - version: 7.1
-            platform: denverton
-            parm: "4.4.180"
-          - version: 7.1
-            platform: epyc7002
-            parm: "5.10.55"
-          - version: 7.1
-            platform: geminilake
-            parm: "4.4.180"
-          - version: 7.1
-            platform: purley
-            parm: "4.4.180"
-          - version: 7.1
-            platform: r1000
-            parm: "4.4.180"
-          - version: 7.1
-            platform: v1000
-            parm: "4.4.180"
-
           - version: 7.2
             platform: apollolake
             parm: "4.4.302"
@@ -150,11 +116,7 @@ jobs:
             chmod a+rw -R "${{ github.workspace }}/source/output"
           fi
 
-          if [[ "${{ matrix.parm }}" == 5* ]]; then
-            MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
-          else
-            MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.parm }}"
-          fi
+          MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
 
           echo "strip modules"
           [ -d "${MODULES_PATH}" ] && find "${MODULES_PATH}" -name "*.ko" -exec strip --strip-unneeded {} \;
@@ -162,15 +124,9 @@ jobs:
           echo "copy 3rd modules"
           [ -d "${MODULES_PATH}" ] && cp -Rvf "${MODULES_PATH}/." "${{ github.workspace }}/source/output"
 
-          if [[ "${{ matrix.parm }}" == 5* ]]; then
-            VERSION="`date +'%y.%m.%d'`"
-            echo "${VERSION}" >"${{ github.workspace }}/source/output/VERSION"
-            tar -zcf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
-          else
-            VERSION="`date +'%y.%m.%d'`"
-            echo "${VERSION}" >"${{ github.workspace }}/source/output/VERSION"
-            tar -zcf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
-          fi
+          VERSION="`date +'%y.%m.%d'`"
+          echo "${VERSION}" >"${{ github.workspace }}/source/output/VERSION"
+          tar -zcf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
 
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
