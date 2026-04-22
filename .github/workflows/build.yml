@@ -85,14 +85,44 @@ jobs:
             parm: "5.10.55"
 
           - version: 7.3
+            platform: apollolake
+            parm: "4.4.302"
+          - version: 7.3
+            platform: broadwell
+            parm: "4.4.302"
+          - version: 7.3
+            platform: broadwellnk
+            parm: "4.4.302"
+          - version: 7.3
+            platform: broadwellnkv2
+            parm: "4.4.302"
+          - version: 7.3
+            platform: broadwellntbap
+            parm: "4.4.302"
+          - version: 7.3
+            platform: denverton
+            parm: "4.4.302"
+          - version: 7.3
             platform: epyc7002
             parm: "5.10.55"
+          - version: 7.3
+            platform: geminilake
+            parm: "4.4.302"
           - version: 7.3
             platform: geminilakenk
             parm: "5.10.55"
           - version: 7.3
+            platform: purley
+            parm: "4.4.302"
+          - version: 7.3
+            platform: r1000
+            parm: "4.4.302"
+          - version: 7.3
             platform: r1000nk
             parm: "5.10.55"
+          - version: 7.3
+            platform: v1000
+            parm: "4.4.302"
           - version: 7.3
             platform: v1000nk
             parm: "5.10.55"
