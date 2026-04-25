@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -e
+set -o pipefail
 
 # Color output for better readability
 RED='\033[0;31m'
@@ -41,15 +42,21 @@ compile_modules() {
   local OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
   mkdir -p "${OUTPUT_DIR}"
 
+  # Create logs directory
+  mkdir -p "${PWD}/logs"
+  local LOG_FILE="${PWD}/logs/compile-${PLATFORM}-${TOOLKIT_VER}-${KVER}.txt"
+
   # Handle allow-store-data-races flag for kernel versions 7.2 and 7.3
   if [ "$TOOLKIT_VER" = "7.2" ] || [ "$TOOLKIT_VER" = "7.3" ]; then
     sed -i 's/--param=allow-store-data-races=0/--allow-store-data-races/g' "${PWD}/${DIR}/Makefile"
   fi
 
-  # Run the Docker container
+  # Run the Docker container with compiler warning suppression
   log_info "Starting Docker compilation for ${PLATFORM} (kernel ${KVER})"
+  log_info "Build log: ${LOG_FILE}"
   if docker run -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input -v "${OUTPUT_DIR}":/output \
-    ${DOCKER_IMAGE} compile-module "${PLATFORM}"; then
+    -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+    ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee -a "${LOG_FILE}"; then
     log_info "Docker compilation completed successfully"
   else
     log_error "Docker compilation failed"
@@ -86,6 +93,78 @@ compile_modules() {
     log_error "✗ Failed to create tarball"
     return 1
   fi
+
+  # Merge with thirdparty modules and create final package
+  merge_with_thirdparty "${PLATFORM}" "${KVER}" "${TOOLKIT_VER}"
+}
+
+# Function to merge compiled modules with thirdparty base and create final package
+merge_with_thirdparty() {
+  local PLATFORM=$1
+  local KVER=$2
+  local TOOLKIT_VER=$3
+  local MODULE_TYPE=${4:-""}  # Optional: "movbe" or empty
+
+  # Get repository root (parent of src directory)
+  local REPO_ROOT="$(dirname "${PWD}")"
+  local THIRDPARTY_DIR="${REPO_ROOT}/thirdparty"
+  local THIRDPARTY_PLATFORM_DIR="${THIRDPARTY_DIR}/${PLATFORM}-${TOOLKIT_VER}-${KVER}"
+
+  # Check if thirdparty directory exists for this platform-version combo
+  if [ ! -d "${THIRDPARTY_PLATFORM_DIR}" ]; then
+    log_warn "No thirdparty directory found at ${THIRDPARTY_PLATFORM_DIR}, skipping merge"
+    return 0
+  fi
+
+  # Create merged-output directory
+  local MERGED_OUTPUT_ROOT="${PWD}/merged-output"
+  local SUFFIX=""
+  [ -n "${MODULE_TYPE}" ] && SUFFIX="-${MODULE_TYPE}"
+  local MERGED_STAGING_DIR="${MERGED_OUTPUT_ROOT}/.staging-${PLATFORM}-${KVER}${SUFFIX}"
+  mkdir -p "${MERGED_STAGING_DIR}"
+
+  log_info "Merging compiled modules${SUFFIX:+ ($MODULE_TYPE)} with thirdparty base..."
+  log_info "  Thirdparty source: ${THIRDPARTY_PLATFORM_DIR}"
+
+  # Step 1: Copy all thirdparty modules to staging area
+  if cp -r "${THIRDPARTY_PLATFORM_DIR}"/* "${MERGED_STAGING_DIR}/" 2>/dev/null; then
+    log_info "  ✓ Copied thirdparty base modules"
+  else
+    log_warn "  ⚠ Could not copy thirdparty modules (directory may be empty)"
+  fi
+
+  # Step 2: Copy compiled .ko files, overwriting thirdparty versions
+  local COMPILED_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}${SUFFIX}"
+  if [ -d "${COMPILED_OUTPUT_DIR}" ]; then
+    local COMPILED_COUNT=$(find "${COMPILED_OUTPUT_DIR}" -maxdepth 1 -type f -name "*.ko" 2>/dev/null | wc -l)
+    if [ "$COMPILED_COUNT" -gt 0 ]; then
+      cp "${COMPILED_OUTPUT_DIR}"/*.ko "${MERGED_STAGING_DIR}/" 2>/dev/null || true
+      log_info "  ✓ Merged $COMPILED_COUNT compiled module(s) (replacing thirdparty versions)"
+    fi
+  fi
+
+  # Step 3: Create final tarball in merged-output
+  local MERGED_PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}${SUFFIX}.tgz"
+  local MERGED_TARBALL_PATH="${MERGED_OUTPUT_ROOT}/${MERGED_PACKAGE_NAME}"
+
+  log_info "Creating merged package: ${MERGED_TARBALL_PATH}"
+  if tar --exclude="*.tgz" -czf "${MERGED_TARBALL_PATH}" -C "${MERGED_STAGING_DIR}" . 2>/dev/null; then
+    if [ -f "${MERGED_TARBALL_PATH}" ]; then
+      local SIZE=$(du -h "${MERGED_TARBALL_PATH}" | awk '{print $1}')
+      log_info "✓ Successfully created merged package: ${MERGED_TARBALL_PATH} (${SIZE})"
+    else
+      log_error "✗ Merged tarball not found after creation"
+      rm -rf "${MERGED_STAGING_DIR}"
+      return 1
+    fi
+  else
+    log_error "✗ Failed to create merged tarball"
+    rm -rf "${MERGED_STAGING_DIR}"
+    return 1
+  fi
+
+  # Cleanup staging directory
+  rm -rf "${MERGED_STAGING_DIR}"
 }
 
 # Function to compile MOVBE module for a given platform and kernel version
@@ -139,10 +218,16 @@ compile_movbe_module() {
   local OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}-movbe"
   mkdir -p "${OUTPUT_DIR}"
 
+  # Create logs directory
+  mkdir -p "${PWD}/logs"
+  local LOG_FILE="${PWD}/logs/compile-${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe.txt"
+
   # Run the Docker container using the proper compile-module function from do.sh
   log_info "Starting Docker MOVBE module compilation for ${PLATFORM} (kernel ${KVER})"
+  log_info "Build log: ${LOG_FILE}"
   if docker run -u $(id -u) --rm -t -v "${TEMP_MOVBE_INPUT}":/input -v "${OUTPUT_DIR}":/output \
-    ${DOCKER_IMAGE} compile-module "${PLATFORM}"; then
+    -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+    ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee -a "${LOG_FILE}"; then
     log_info "Docker MOVBE module compilation completed successfully"
   else
     log_error "Docker MOVBE module compilation failed"
@@ -184,6 +269,9 @@ compile_movbe_module() {
     log_error "✗ Failed to create tarball"
     return 1
   fi
+
+  # Merge with thirdparty modules and create final package (for MOVBE)
+  merge_with_thirdparty "${PLATFORM}" "${KVER}" "${TOOLKIT_VER}" "movbe"
 }
 
 compile_binary() {
@@ -213,10 +301,16 @@ compile_binary() {
   local OUTPUT_DIR="${PWD}/output/${PLATFORM}-binary"
   mkdir -p "${OUTPUT_DIR}"
 
+  # Create logs directory
+  mkdir -p "${PWD}/logs"
+  local LOG_FILE="${PWD}/logs/compile-${PLATFORM}-binary.txt"
+
   # Run the Docker container
   log_info "Starting binary compilation for ${PLATFORM} using ${BUILD_SCRIPT}"
+  log_info "Build log: ${LOG_FILE}"
   if docker run --privileged -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input -v "${OUTPUT_DIR}":/output \
-    ${DOCKER_IMAGE} compile-binary "${PLATFORM}" "${BUILD_SCRIPT}"; then
+    -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+    ${DOCKER_IMAGE} compile-binary "${PLATFORM}" "${BUILD_SCRIPT}" 2>&1 | tee -a "${LOG_FILE}"; then
     log_info "Docker binary compilation completed successfully"
   else
     log_error "Docker binary compilation failed"
@@ -255,11 +349,12 @@ select_platforms() {
   local PLATFORMS_FILE="PLATFORMS"
   [ ! -f "${PLATFORMS_FILE}" ] && { log_error "${PLATFORMS_FILE} not found."; exit 1; }
 
-  # Extract unique toolkit versions
+  # Extract unique toolkit versions (exclude 7.1)
   local -a versions=()
   while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
     [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
     TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+    [ "$TOOLKIT_VER" = "7.1" ] && continue
     if [[ ! " ${versions[@]} " =~ " ${TOOLKIT_VER} " ]]; then
       versions+=("$TOOLKIT_VER")
     fi
@@ -296,57 +391,84 @@ select_platforms() {
     done
   fi
   
-  # For each selected version, show platform selection
-  for SELECTED_VERSION in "${selected_versions[@]}"; do
-    log_info "=== Platforms for version ${SELECTED_VERSION} ==="
-    echo ""
+  # Build set of all platform combinations for selected versions
+  log_info "=== Available Platforms ==="
+  echo ""
+  
+  local -a all_platforms=()
+  local -a all_platform_data=()
+  local idx=1
+  
+  while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+    [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+    TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
     
-    # Parse platforms for this version
-    local -a platforms=()
-    local -a platform_data=()
-    local idx=1
+    # Skip if version not in selected versions
+    local skip=1
+    for sel_ver in "${selected_versions[@]}"; do
+      if [ "$TOOLKIT_VER" = "$sel_ver" ]; then
+        skip=0
+        break
+      fi
+    done
+    [ $skip -eq 1 ] && continue
     
-    while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
-      [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
-      TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
-      [ "$TOOLKIT_VER" != "$SELECTED_VERSION" ] && continue
-      
-      PLATFORM=$(echo "${PLATFORM}" | xargs)
-      KVER=$(echo "${KVER}" | xargs)
-      DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
-      
-      platforms+=("$PLATFORM")
-      platform_data+=("$KVER|$DOCKER_IMAGE")
-      printf "%2d) %-20s (kernel %s)\n" "$idx" "$PLATFORM" "$KVER"
+    PLATFORM=$(echo "${PLATFORM}" | xargs)
+    KVER=$(echo "${KVER}" | xargs)
+    DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
+    
+    # Check if platform already listed
+    local platform_exists=0
+    for existing in "${all_platforms[@]}"; do
+      if [ "$existing" = "$PLATFORM" ]; then
+        platform_exists=1
+        break
+      fi
+    done
+    
+    if [ $platform_exists -eq 0 ]; then
+      all_platforms+=("$PLATFORM")
+      printf "%2d) %s\n" "$idx" "$PLATFORM"
       idx=$((idx + 1))
-    done < "${PLATFORMS_FILE}"
-    
-    echo ""
-    echo "Enter platform numbers to build (space-separated, or 'all' for all platforms):"
-    read -r -p "> " platform_selection
-    
-    echo ""
-    
-    if [ -z "$platform_selection" ] || [ "$platform_selection" = "all" ]; then
-      for i in "${!platforms[@]}"; do
-        local data="${platform_data[$i]}"
-        local KVER="${data%%|*}"
-        local DOCKER_IMAGE="${data#*|}"
-        compile_modules "${platforms[$i]}" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
-      done
-    else
-      for num in $platform_selection; do
-        if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#platforms[@]}" ]; then
-          local idx=$((num - 1))
-          local data="${platform_data[$idx]}"
-          local KVER="${data%%|*}"
-          local DOCKER_IMAGE="${data#*|}"
-          compile_modules "${platforms[$idx]}" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
-        else
-          log_warn "Invalid platform number $num"
-        fi
-      done
     fi
+  done < "${PLATFORMS_FILE}"
+  
+  echo ""
+  echo "Enter platform numbers to build (space-separated, or 'all' for all platforms):"
+  read -r -p "> " platform_selection
+  
+  echo ""
+  
+  # Determine selected platforms
+  local -a selected_platforms=()
+  if [ -z "$platform_selection" ] || [ "$platform_selection" = "all" ]; then
+    selected_platforms=("${all_platforms[@]}")
+  else
+    for num in $platform_selection; do
+      if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#all_platforms[@]}" ]; then
+        selected_platforms+=("${all_platforms[$((num-1))]}")
+      else
+        log_warn "Invalid platform number $num"
+      fi
+    done
+  fi
+  
+  # Now compile all combinations of selected platforms and versions
+  for SELECTED_PLATFORM in "${selected_platforms[@]}"; do
+    for SELECTED_VERSION in "${selected_versions[@]}"; do
+      while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+        [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+        PLATFORM=$(echo "${PLATFORM}" | xargs)
+        TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+        KVER=$(echo "${KVER}" | xargs)
+        DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
+        
+        if [ "$PLATFORM" = "$SELECTED_PLATFORM" ] && [ "$TOOLKIT_VER" = "$SELECTED_VERSION" ]; then
+          compile_modules "$SELECTED_PLATFORM" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
+          break
+        fi
+      done < "${PLATFORMS_FILE}"
+    done
   done
 }
 
@@ -355,11 +477,12 @@ select_platforms_movbe() {
   local PLATFORMS_FILE="PLATFORMS"
   [ ! -f "${PLATFORMS_FILE}" ] && { log_error "${PLATFORMS_FILE} not found."; exit 1; }
 
-  # Extract unique toolkit versions
+  # Extract unique toolkit versions (exclude 7.1)
   local -a versions=()
   while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
     [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
     TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+    [ "$TOOLKIT_VER" = "7.1" ] && continue
     if [[ ! " ${versions[@]} " =~ " ${TOOLKIT_VER} " ]]; then
       versions+=("$TOOLKIT_VER")
     fi
@@ -396,63 +519,96 @@ select_platforms_movbe() {
     done
   fi
   
-  # For each selected version, show platform selection
-  for SELECTED_VERSION in "${selected_versions[@]}"; do
-    log_info "=== Platforms for version ${SELECTED_VERSION} (MOVBE Module) ==="
-    echo ""
+  # Build set of all platform combinations for selected versions
+  log_info "=== Available Platforms (MOVBE Module) ==="
+  echo ""
+  
+  local -a all_platforms=()
+  local idx=1
+  
+  while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+    [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+    TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
     
-    # Parse platforms for this version
-    local -a platforms=()
-    local -a platform_data=()
-    local idx=1
+    # Skip if version not in selected versions
+    local skip=1
+    for sel_ver in "${selected_versions[@]}"; do
+      if [ "$TOOLKIT_VER" = "$sel_ver" ]; then
+        skip=0
+        break
+      fi
+    done
+    [ $skip -eq 1 ] && continue
     
-    while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
-      [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
-      TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
-      [ "$TOOLKIT_VER" != "$SELECTED_VERSION" ] && continue
-      
-      PLATFORM=$(echo "${PLATFORM}" | xargs)
-      KVER=$(echo "${KVER}" | xargs)
-      DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
-      
-      platforms+=("$PLATFORM")
-      platform_data+=("$KVER|$DOCKER_IMAGE")
-      printf "%2d) %-20s (kernel %s)\n" "$idx" "$PLATFORM" "$KVER"
+    PLATFORM=$(echo "${PLATFORM}" | xargs)
+    
+    # Check if platform already listed
+    local platform_exists=0
+    for existing in "${all_platforms[@]}"; do
+      if [ "$existing" = "$PLATFORM" ]; then
+        platform_exists=1
+        break
+      fi
+    done
+    
+    if [ $platform_exists -eq 0 ]; then
+      all_platforms+=("$PLATFORM")
+      printf "%2d) %s\n" "$idx" "$PLATFORM"
       idx=$((idx + 1))
-    done < "${PLATFORMS_FILE}"
-    
-    echo ""
-    echo "Enter platform numbers to build (space-separated, or 'all' for all platforms):"
-    read -r -p "> " platform_selection
-    
-    echo ""
-    
-    if [ -z "$platform_selection" ] || [ "$platform_selection" = "all" ]; then
-      for i in "${!platforms[@]}"; do
-        local data="${platform_data[$i]}"
-        local KVER="${data%%|*}"
-        local DOCKER_IMAGE="${data#*|}"
-        compile_movbe_module "${platforms[$i]}" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
-      done
-    else
-      for num in $platform_selection; do
-        if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#platforms[@]}" ]; then
-          local idx=$((num - 1))
-          local data="${platform_data[$idx]}"
-          local KVER="${data%%|*}"
-          local DOCKER_IMAGE="${data#*|}"
-          compile_movbe_module "${platforms[$idx]}" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
-        else
-          log_warn "Invalid platform number $num"
-        fi
-      done
     fi
+  done < "${PLATFORMS_FILE}"
+  
+  echo ""
+  echo "Enter platform numbers to build (space-separated, or 'all' for all platforms):"
+  read -r -p "> " platform_selection
+  
+  echo ""
+  
+  # Determine selected platforms
+  local -a selected_platforms=()
+  if [ -z "$platform_selection" ] || [ "$platform_selection" = "all" ]; then
+    selected_platforms=("${all_platforms[@]}")
+  else
+    for num in $platform_selection; do
+      if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#all_platforms[@]}" ]; then
+        selected_platforms+=("${all_platforms[$((num-1))]}")
+      else
+        log_warn "Invalid platform number $num"
+      fi
+    done
+  fi
+  
+  # Now compile all combinations of selected platforms and versions
+  for SELECTED_PLATFORM in "${selected_platforms[@]}"; do
+    for SELECTED_VERSION in "${selected_versions[@]}"; do
+      while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
+        [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+        PLATFORM=$(echo "${PLATFORM}" | xargs)
+        TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+        KVER=$(echo "${KVER}" | xargs)
+        DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
+        
+        if [ "$PLATFORM" = "$SELECTED_PLATFORM" ] && [ "$TOOLKIT_VER" = "$SELECTED_VERSION" ]; then
+          compile_movbe_module "$SELECTED_PLATFORM" "$KVER" "$SELECTED_VERSION" "$DOCKER_IMAGE"
+          break
+        fi
+      done < "${PLATFORMS_FILE}"
+    done
   done
 }
 
 
 main() {
   log_info "=== Module Compiler (Docker) ==="
+  echo ""
+
+  # Clean and create logs directory
+  if [ -d "${PWD}/logs" ]; then
+    log_info "Cleaning old logs..."
+    rm -rf "${PWD}/logs"
+  fi
+  mkdir -p "${PWD}/logs"
+  log_info "Build logs will be saved to: ${PWD}/logs"
   echo ""
 
   # Check if the unified PLATFORMS file exists
