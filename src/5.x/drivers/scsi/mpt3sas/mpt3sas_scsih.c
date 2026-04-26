@@ -56,11 +56,6 @@
 #include <linux/workqueue.h>
 #include <linux/delay.h>
 #include <linux/pci.h>
-#ifdef MY_ABC_HERE
-/* Synology: syno_pciepath_dts_pattern_get 은 커널 built-in symbol */
-extern int syno_pciepath_dts_pattern_get(struct pci_dev *pdev,
-                                          char *buf, int buf_len);
-#endif /* MY_ABC_HERE */
 #if !((defined(RHEL_MAJOR) && (RHEL_MAJOR == 8) && (RHEL_MINOR > 2)) || \
 	(defined(CONFIG_SUSE_KERNEL) && ((CONFIG_SUSE_VERSION == 15) && (CONFIG_SUSE_PATCHLEVEL >= 3))) || \
 	(LINUX_VERSION_CODE > KERNEL_VERSION(5,4,0)) || \
@@ -15698,64 +15693,7 @@ SCSIH_MAP_QUEUE(struct Scsi_Host *shost)
 #endif
 }
 #endif
-#ifdef MY_ABC_HERE
-/**
- * syno_mptNsas_info_enum - populate sdev->syno_block_info for mpt2/3sas HBAs
- * @sdev: SCSI device to populate
- *
- * Reverse-engineered from mpt3sas.ko v52.00.00.00 (RR CKs, epyc7002 DSM 7.2)
- * Binary reference: .text+0xbf40
- *
- * Key offsets confirmed from binary:
- *   sdev+0x839 = sdev->syno_block_info  (BLOCK_INFO_SIZE = 0x200)
- *   sdev+0x70  = port_no field          (ata_port_no value source)
- *   ioc->pdev  = PCI device pointer     (via shost_priv cast)
- */
-static void syno_mptNsas_info_enum(struct scsi_device *sdev)
-{
-	char pcie_path[128];
-	struct MPT3SAS_ADAPTER *ioc;
-	struct pci_dev *pci_dev;
-	int ret;
 
-	if (!sdev || !sdev->host)
-		return;
-
-	ioc = shost_priv(sdev->host);
-	if (!ioc)
-		return;
-
-	pci_dev = ioc->pdev;
-	memset(pcie_path, 0, sizeof(pcie_path));
-
-	ret = syno_pciepath_dts_pattern_get(pci_dev, pcie_path,
-	                                     sizeof(pcie_path));
-	if (ret != -1) {
-		snprintf(sdev->syno_block_info, BLOCK_INFO_SIZE,
-			 "%spciepath=%s\n",
-			 sdev->syno_block_info, pcie_path);
-		/*
-		 * ata_port_no: binary shows sdev+0x70 used as uint.
-		 * Verify: offsetof(struct scsi_device, channel) or ->id
-		 * in DSM 5.10.55 kernel headers.
-		 */
-		snprintf(sdev->syno_block_info, BLOCK_INFO_SIZE,
-			 "%sata_port_no=%u\n",
-			 sdev->syno_block_info,
-			 (unsigned int)sdev->id);
-		snprintf(sdev->syno_block_info, BLOCK_INFO_SIZE,
-			 "%sdriver=%s\n",
-			 sdev->syno_block_info,
-			 "ahci");
-	} else {
-		snprintf(sdev->syno_block_info, BLOCK_INFO_SIZE,
-			 "%spciepath=\nata_port_no=%u\ndriver=%s\n",
-			 sdev->syno_block_info,
-			 (unsigned int)sdev->id,
-			 "ahci");
-	}
-}
-#endif /* MY_ABC_HERE */
 /* shost template for SAS 2.0 HBA devices */
 static struct scsi_host_template mpt2sas_driver_template = {
 	.module                         = THIS_MODULE,
@@ -15812,10 +15750,7 @@ static struct scsi_host_template mpt2sas_driver_template = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0))
 	.track_queue_depth              = 1,
 #if defined(MY_ABC_HERE)
-    .syno_port_type					= SYNO_PORT_TYPE_SATA,
-#ifdef MY_ABC_HERE
-	.syno_sdev_info_enum		= syno_mptNsas_info_enum,
-#endif /* MY_ABC_HERE */
+    .syno_port_type					= SYNO_PORT_TYPE_SAS,
 #endif /* MY_ABC_HERE */
 #endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
@@ -15889,10 +15824,7 @@ static struct scsi_host_template mpt3sas_driver_template = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0))
 	.track_queue_depth              = 1,
 #if defined(MY_ABC_HERE)
-    .syno_port_type					= SYNO_PORT_TYPE_SATA,
-#ifdef MY_ABC_HERE
-	.syno_sdev_info_enum		= syno_mptNsas_info_enum,
-#endif /* MY_ABC_HERE */
+    .syno_port_type					= SYNO_PORT_TYPE_SAS,
 #endif /* MY_ABC_HERE */
 #endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0))
