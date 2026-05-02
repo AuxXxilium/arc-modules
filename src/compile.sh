@@ -274,7 +274,7 @@ merge_with_thirdparty() {
   fi
   
   # Step 3: Create final tarball in merged-output
-  local MERGED_PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}${SUFFIX}.tgz"
+  local MERGED_PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
   local MERGED_TARBALL_PATH="${MERGED_OUTPUT_ROOT}/${MERGED_PACKAGE_NAME}"
 
   log_info "Creating merged package: ${MERGED_TARBALL_PATH}"

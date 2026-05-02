@@ -5,14 +5,11 @@
 # See /LICENSE for more information.
 #
 
-# version: [ 7.1, 7.2 ]
-# platform: [ apollolake, broadwell, broadwellnk, bromolow, denverton, epyc7002, geminilake, purley, r1000, v1000 ]
-# exclude:
-#   - version: 7.1
-#     platform: broadwell
-# include:
-#   - version: "7.2"
-#     platform: "broadwell"
+# Automated module compilation for Arc
+# DSM 7.2: Storage modules only (10 platforms)
+# DSM 7.3: MOVBE + Storage modules combined (10 platforms)
+# Output: Single unified package per platform: {platform}-{version}-{kver}.tgz
+# Platforms: apollolake, broadwell, broadwellnk, broadwellnkv2, denverton, epyc7002, geminilake, purley, r1000, v1000
 
 name: Compile Modules
 
@@ -20,76 +17,110 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'format %y.%-m.$i or auto'
+        description: "version"
         required: false
         type: string
+      latest:
+        description: "latest"
+        default: true
+        type: boolean
+      prerelease:
+        description: "pre release"
+        default: false
+        type: boolean
+      firmware:
+        description: "Update firmware"
+        default: false
+        type: boolean
 
 jobs:
   build:
     strategy:
       matrix:
         include:
-          - version: 7.1 
+          # DSM 7.2 - Storage modules only
+          - version: 7.2 
             platform: apollolake
-            parm: "4.4.180"
-          - version: 7.1
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2
             platform: broadwell
-            parm: "4.4.180"
-          - version: 7.1 
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2 
             platform: broadwellnk
-            parm: "4.4.180"
-          - version: 7.1 
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2 
             platform: broadwellnkv2
-            parm: "4.4.180"
-          - version: 7.1
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2
             platform: denverton
-            parm: "4.4.180"
-          - version: 7.1
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2
             platform: epyc7002
             parm: "5.10.55"
-          - version: 7.1 
+            mode: storage-only
+          - version: 7.2 
             platform: geminilake
-            parm: "4.4.180"
-          - version: 7.1 
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2 
             platform: purley
-            parm: "4.4.180"
-          - version: 7.1
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2
             platform: r1000
-            parm: "4.4.180"
-          - version: 7.1
+            parm: "4.4.302"
+            mode: storage-only
+          - version: 7.2
             platform: v1000
-            parm: "4.4.180"
+            parm: "4.4.302"
+            mode: storage-only
 
-          - version: 7.2 
+          # DSM 7.3 - MOVBE + Storage modules (combined package)
+          - version: 7.3
             platform: apollolake
             parm: "4.4.302"
-          - version: 7.2
+            mode: movbe+storage
+          - version: 7.3
             platform: broadwell
             parm: "4.4.302"
-          - version: 7.2 
+            mode: movbe+storage
+          - version: 7.3
             platform: broadwellnk
             parm: "4.4.302"
-          - version: 7.2 
+            mode: movbe+storage
+          - version: 7.3
             platform: broadwellnkv2
             parm: "4.4.302"
-          - version: 7.2
+            mode: movbe+storage
+          - version: 7.3
             platform: denverton
             parm: "4.4.302"
-          - version: 7.2
+            mode: movbe+storage
+          - version: 7.3
             platform: epyc7002
             parm: "5.10.55"
-          - version: 7.2 
+            mode: movbe+storage
+          - version: 7.3
             platform: geminilake
             parm: "4.4.302"
-          - version: 7.2 
+            mode: movbe+storage
+          - version: 7.3
             platform: purley
             parm: "4.4.302"
-          - version: 7.2
+            mode: movbe+storage
+          - version: 7.3
             platform: r1000
             parm: "4.4.302"
-          - version: 7.2
+            mode: movbe+storage
+          - version: 7.3
             platform: v1000
             parm: "4.4.302"
+            mode: movbe+storage
 
     runs-on: ubuntu-latest
 
@@ -101,113 +132,494 @@ jobs:
         run: |
           git config --global user.email "info@auxxxilium.tech"
           git config --global user.name "AuxXxilium"
-          sudo timedatectl set-timezone "Europe/Berlin" 
+          sudo timedatectl set-timezone "Europe/Berlin"
+      
+      - name: Set up Docker
+        run: |
+          docker version
           
-      - name: Get EnvDeploy
+      - name: Get Docker Image
         run: |
-          ROOT_PATH=${{ github.workspace }}
-
-          git clone https://github.com/SynologyOpenSource/pkgscripts-ng.git ${ROOT_PATH}/pkgscripts-ng
-          cd ${ROOT_PATH}/pkgscripts-ng
-          git checkout DSM${{ matrix.version }}
-          sudo ./EnvDeploy -v ${{ matrix.version }} -l  # Get Available platforms
-          sudo ./EnvDeploy -q -v ${{ matrix.version }} -p ${{ matrix.platform }}
-
-          #ENV
-          mkdir -p ${ROOT_PATH}/source
-
-          ENV_PATH=${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}
-          sudo cp -al ${ROOT_PATH}/pkgscripts-ng ${ENV_PATH}/
-
-          sudo chroot ${ENV_PATH} << "EOF"
-          cd pkgscripts
-
-          version=${{ matrix.version }}; [ ${version:0:1} -gt 6 ] && sed -i 's/print(" ".join(kernels))/pass #&/' ProjectDepends.py
-          sed -i '/PLATFORM_FAMILY/a\\techo "PRODUCT=$PRODUCT" >> $file\n\techo "KSRC=$KERNEL_SEARCH_PATH" >> $file\n\techo "LINUX_SRC=$KERNEL_SEARCH_PATH" >> $file' include/build
-          ./SynoBuild -c -p ${{ matrix.platform }}
-
-          while read line; do if [ ${line:0:1} != "#" ]; then export ${line%%=*}="${line#*=}"; fi; done < /env${BUILD_ARCH}.mak
-          if [ -f "${KSRC}/Makefile" ]; then
-            # gcc issue "unrecognized command-line option '--param=allow-store-data-races=0'".
-            [ "${{ matrix.version }}" == "7.2" ] && sed -i 's/--param=allow-store-data-races=0/--allow-store-data-races/g' ${KSRC}/Makefile
-
-            VERSION=`cat ${KSRC}/Makefile | grep ^VERSION | awk -F' ' '{print $3}'`
-            PATCHLEVEL=`cat ${KSRC}/Makefile | grep ^PATCHLEVEL | awk -F' ' '{print $3}'`
-            SUBLEVEL=`cat ${KSRC}/Makefile | grep ^SUBLEVEL | awk -F' ' '{print $3}'`
-            [ -f "/env32.mak" ] && echo "KVER=${VERSION}.${PATCHLEVEL}.${SUBLEVEL}" >> /env32.mak
-            [ -f "/env64.mak" ] && echo "KVER=${VERSION}.${PATCHLEVEL}.${SUBLEVEL}" >> /env64.mak
-            CCVER=`$CC --version | head -n 1 | awk -F' ' '{print $3}'`
-            [ -f "/env32.mak" ] && echo "CCVER=${CCVER}" >> /env32.mak
-            [ -f "/env64.mak" ] && echo "CCVER=${CCVER}" >> /env64.mak
-          fi
-          EOF
+          # Extract Docker image from PLATFORMS file for this platform/version combo
+          DOCKER_IMAGE=""
+          while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE_LINE; do
+            [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
+            PLATFORM=$(echo "${PLATFORM}" | xargs)
+            TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
+            if [ "$PLATFORM" = "${{ matrix.platform }}" ] && [ "$TOOLKIT_VER" = "${{ matrix.version }}" ]; then
+              DOCKER_IMAGE=$(echo "${DOCKER_IMAGE_LINE}" | xargs)
+              break
+            fi
+          done < "${GITHUB_WORKSPACE}/src/PLATFORMS"
           
-          [ -f ${ENV_PATH}/env64.mak ] && ENV_FILE=${ENV_PATH}/env64.mak || ([ -f ${ENV_PATH}/env32.mak ] && ENV_FILE=${ENV_PATH}/env32.mak)
-          if [ -n "${ENV_FILE}" ]; then
-            KVER=`grep 'KVER=' ${ENV_FILE} | awk -F'=' '{print $2}'`
-            CCVER=`grep 'CCVER=' ${ENV_FILE} | awk -F'=' '{print $2}'`
-            [ -n "${KVER}" ] && echo "KVER=${KVER}" >> $GITHUB_ENV
-            [ -n "${CCVER}" ] && echo "CCVER=${CCVER}" >> $GITHUB_ENV
+          if [ -z "$DOCKER_IMAGE" ]; then
+            echo "ERROR: No Docker image found for ${{ matrix.platform }}-${{ matrix.version }}"
+            exit 1
           fi
-
-      - name: Get Src
+          
+          echo "DOCKER_IMAGE=${DOCKER_IMAGE}" >> $GITHUB_ENV
+          echo "Using Docker image: ${DOCKER_IMAGE}"
+          
+          # Pull the Docker image
+          docker pull "${DOCKER_IMAGE}"
+      
+      - name: Determine Compilation Mode
+        id: compile_mode
         run: |
-          ROOT_PATH=${{ github.workspace }}
-
-          mkdir -p ${ROOT_PATH}/source/output
-          repo=${{ env.repo }}
-          KVER=${{ env.KVER }}
-
-          sudo cp -a ${ROOT_PATH}/src/${KVER:0:1}.x ${ROOT_PATH}/source/input
-
-          sudo cp -a ${ROOT_PATH}/source ${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/
-
-      - name: Make
-        run: |
-          ROOT_PATH=${{ github.workspace }}
-
-          sudo chroot build_env/ds.${{ matrix.platform }}-${{ matrix.version }} << "EOF"
-          sed -i 's/^CFLAGS=/#CFLAGS=/g; s/^CXXFLAGS=/#CXXFLAGS=/g' /env${BUILD_ARCH}.mak
-          while read line; do if [ ${line:0:1} != "#" ]; then export ${line%%=*}="${line#*=}"; fi; done < /env${BUILD_ARCH}.mak
-          cd /source/input
-          [ -z "`grep 'env.mak' Makefile`" ] && sed -i '1 i include /env.mak' Makefile
-
-          if [ -f "defines.${{ matrix.platform }}" ]; then
-            PARMS="`cat "defines.${{ matrix.platform }}" | xargs`"
+          # Use matrix mode if specified, otherwise fall back to input/auto-detection
+          MATRIX_MODE="${{ matrix.mode }}"
+          INPUT_MODE="${{ inputs.compile_mode }}"
+          
+          if [ -n "${MATRIX_MODE}" ]; then
+            COMPILE_MODE="${MATRIX_MODE}"
+            echo "Using matrix-defined mode: ${COMPILE_MODE}"
+          elif [ -n "${INPUT_MODE}" ] && [ "${INPUT_MODE}" != "standard" ]; then
+            COMPILE_MODE="${INPUT_MODE}"
+            echo "Using input mode: ${COMPILE_MODE}"
           else
-            echo "[E] ${{ matrix.platform }}-${{ matrix.version }}"
+            # Fallback to auto-detection
+            TOOLKIT_VER="${{ matrix.version }}"
+            if [ "${TOOLKIT_VER}" = "7.3" ]; then
+              COMPILE_MODE="movbe"
+              echo "Auto-selected: MOVBE mode for DSM 7.3"
+            elif [ "${TOOLKIT_VER}" = "7.2" ]; then
+              COMPILE_MODE="storage-only"
+              echo "Auto-selected: Storage-only mode for DSM 7.2"
+            else
+              COMPILE_MODE="standard"
+              echo "Using: Standard compilation mode"
+            fi
           fi
-          make -j`nproc` -C "${KSRC}" M="${PWD}" ${PARMS} modules
-          while read F; do
-            strip -g "${F}"
-            echo "Copying `basename ${F}`"
-            cp "${F}" "/source/output"
-          done < <(find ${PWD} -name \*.ko)
-          EOF
+          
+          echo "mode=${COMPILE_MODE}" >> $GITHUB_OUTPUT
+          echo "COMPILE_MODE=${COMPILE_MODE}" >> $GITHUB_ENV
 
-          sudo cp -a ${ROOT_PATH}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/output ${ROOT_PATH}/source/
-          sudo chmod a+rw -R ${ROOT_PATH}/source/output
-
-      - name: Tar to Artifacts
+      - name: Compile Modules
         run: |
-          if [ ! -d "${{ github.workspace }}/source/output" ]; then
-            mkdir -p "${{ github.workspace }}/source/output"
-            chmod a+rw -R "${{ github.workspace }}/source/output"
+          cd ${GITHUB_WORKSPACE}/src
+          
+          PLATFORM="${{ matrix.platform }}"
+          KVER="${{ matrix.parm }}"
+          TOOLKIT_VER="${{ matrix.version }}"
+          DOCKER_IMAGE="${{ env.DOCKER_IMAGE }}"
+          COMPILE_MODE="${{ env.COMPILE_MODE }}"
+          
+          DIR="${KVER:0:1}.x"
+          
+          # Check if defines file exists
+          if [ ! -f "${PWD}/${DIR}/defines.${PLATFORM}" ]; then
+            echo "ERROR: ${PWD}/${DIR}/defines.${PLATFORM} not found"
+            exit 1
           fi
+          
+          # Create output directories
+          mkdir -p "${PWD}/output/${PLATFORM}-${KVER}"
+          mkdir -p "${PWD}/logs"
+          
+          LOG_FILE="${PWD}/logs/compile-${PLATFORM}-${TOOLKIT_VER}-${KVER}.txt"
+          
+          case "${COMPILE_MODE}" in
+            movbe+storage)
+              echo "=== Compiling MOVBE + Storage modules for ${PLATFORM} ==="
+              
+              # Step 1: Compile MOVBE module
+              echo "--- Compiling MOVBE module ---"
+              if [ ! -d "${PWD}/movbe" ] || [ ! -f "${PWD}/movbe/Makefile" ]; then
+                echo "ERROR: MOVBE module not found"
+                exit 1
+              fi
+              
+              TEMP_MOVBE_INPUT="${PWD}/.movbe-input-${PLATFORM}-${KVER}"
+              mkdir -p "${TEMP_MOVBE_INPUT}"
+              
+              cp "${PWD}/movbe"/*.c "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
+              cp "${PWD}/movbe"/Makefile "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
+              
+              {
+                head -n 1 "${PWD}/${DIR}/defines.${PLATFORM}"
+                cat "${PWD}/movbe/defines.movbe"
+              } > "${TEMP_MOVBE_INPUT}/defines.${PLATFORM}"
+              
+              OUTPUT_MOVBE_DIR="${PWD}/output/${PLATFORM}-${KVER}-movbe"
+              mkdir -p "${OUTPUT_MOVBE_DIR}"
+              
+            docker run --rm -t --privileged \
+              -v "${TEMP_MOVBE_INPUT}":/input \
+              -v "${OUTPUT_MOVBE_DIR}":/output \
+              -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+              ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee -a "${LOG_FILE}"
+            
+            # Fix ownership of compiled files
+            sudo chown -R $(id -u):$(id -g) "${OUTPUT_MOVBE_DIR}" 2>/dev/null || true
+            
+            rm -rf "${TEMP_MOVBE_INPUT}"
+              
+              if [ -d "${OUTPUT_MOVBE_DIR}" ] && [ "$(ls -1 ${OUTPUT_MOVBE_DIR} 2>/dev/null | wc -l)" -gt 0 ]; then
+                echo "✓ MOVBE module compiled successfully"
+              else
+                echo "ERROR: No MOVBE output files generated"
+                exit 1
+              fi
+              
+              # Step 2: Compile storage modules
+              echo "--- Compiling storage modules ---"
+            docker run --rm -t --privileged \
+              -v "${PWD}/${DIR}":/input \
+              -v "${PWD}/output/${PLATFORM}-${KVER}":/output \
+              -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+              ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee -a "${LOG_FILE}"
+            
+            # Fix ownership of compiled files
+            sudo chown -R $(id -u):$(id -g) "${PWD}/output/${PLATFORM}-${KVER}" 2>/dev/null || true
+            
+            echo "✓ Storage modules compiled (filtering done during merge)"
+            ;;
+            
+            movbe)
+              echo "=== Compiling MOVBE module for ${PLATFORM} ==="
+              
+              # Check if MOVBE module exists
+              if [ ! -d "${PWD}/movbe" ] || [ ! -f "${PWD}/movbe/Makefile" ]; then
+                echo "ERROR: MOVBE module not found"
+                exit 1
+              fi
+              
+              # Create temporary input directory
+              TEMP_MOVBE_INPUT="${PWD}/.movbe-input-${PLATFORM}-${KVER}"
+              mkdir -p "${TEMP_MOVBE_INPUT}"
+              
+              # Copy MOVBE source files
+              cp "${PWD}/movbe"/*.c "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
+              cp "${PWD}/movbe"/Makefile "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
+              
+              # Create platform-specific defines
+              {
+                head -n 1 "${PWD}/${DIR}/defines.${PLATFORM}"
+                cat "${PWD}/movbe/defines.movbe"
+              } > "${TEMP_MOVBE_INPUT}/defines.${PLATFORM}"
+              
+              OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}-movbe"
+              mkdir -p "${OUTPUT_DIR}"
+              
+              # Compile with Docker
+            docker run --rm -t --privileged \
+              -v "${TEMP_MOVBE_INPUT}":/input \
+              -v "${OUTPUT_DIR}":/output \
+              -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+              ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee "${LOG_FILE}"
+                          # Fix ownership of compiled files
+            sudo chown -R $(id -u):$(id -g) "${OUTPUT_DIR}" 2>/dev/null || true
+                          # Cleanup
+              rm -rf "${TEMP_MOVBE_INPUT}"
+              
+              # Create intermediate tarball (before merge)
+              if [ -d "${OUTPUT_DIR}" ] && [ "$(ls -1 ${OUTPUT_DIR} 2>/dev/null | wc -l)" -gt 0 ]; then
+                tar --exclude="*.tgz" -czf "${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe-raw.tgz" -C "${OUTPUT_DIR}" .
+                echo "✓ Created intermediate ${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe-raw.tgz"
+              else
+                echo "ERROR: No output files generated"
+                exit 1
+              fi
+              # Note: Final package will be created in merge step
+              ;;
+              
+            storage-only)
+              echo "=== Compiling storage modules only for ${PLATFORM} ==="
+              
+              # Standard compilation
+            docker run --rm -t --privileged \
+              -v "${PWD}/${DIR}":/input \
+              -v "${PWD}/output/${PLATFORM}-${KVER}":/output \
+              -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+              ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee "${LOG_FILE}"
+            
+            # Fix ownership of compiled files
+            sudo chown -R $(id -u):$(id -g) "${PWD}/output/${PLATFORM}-${KVER}" 2>/dev/null || true
+            
+            # Note: Storage filtering and package creation done during merge step
+              echo "✓ Compiled modules (storage filtering and packaging done during merge)"
+              ;;
+              
+            *)
+              echo "=== Compiling standard modules for ${PLATFORM} ==="
+              
+              # Standard compilation
+            docker run --rm -t --privileged \
+              -v "${PWD}/${DIR}":/input \
+              -v "${PWD}/output/${PLATFORM}-${KVER}":/output \
+              -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+              ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee "${LOG_FILE}"
+            
+            # Fix ownership of compiled files
+            sudo chown -R $(id -u):$(id -g) "${PWD}/output/${PLATFORM}-${KVER}" 2>/dev/null || true
+            
+            # Create standard tarball (before merge)
+              if [ -d "${PWD}/output/${PLATFORM}-${KVER}" ] && [ "$(ls -1 ${PWD}/output/${PLATFORM}-${KVER} 2>/dev/null | wc -l)" -gt 0 ]; then
+                tar --exclude="*.tgz" -czf "${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}-raw.tgz" -C "${PWD}/output/${PLATFORM}-${KVER}" .
+                echo "✓ Created intermediate ${PLATFORM}-${TOOLKIT_VER}-${KVER}-raw.tgz"
+              else
+                echo "ERROR: No output files generated"
+                exit 1
+              fi
+              ;;
+          esac
 
-          if [ "${{ matrix.platform }}" = "epyc7002" ]; then
-            tar caf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
-          else
-            tar caf ${{ github.workspace }}/source/${{ matrix.platform }}-${{ matrix.parm }}.tgz -C ${{ github.workspace }}/source/output .
+      - name: Merge with Thirdparty
+        run: |
+          cd ${GITHUB_WORKSPACE}/src
+          
+          PLATFORM="${{ matrix.platform }}"
+          KVER="${{ matrix.parm }}"
+          TOOLKIT_VER="${{ matrix.version }}"
+          COMPILE_MODE="${{ env.COMPILE_MODE }}"
+          
+          REPO_ROOT="$(dirname "${PWD}")"
+          THIRDPARTY_PLATFORM_DIR="${REPO_ROOT}/thirdparty/${PLATFORM}-${TOOLKIT_VER}-${KVER}"
+          
+          if [ ! -d "${THIRDPARTY_PLATFORM_DIR}" ]; then
+            echo "No thirdparty directory found, skipping merge"
+            echo "⚠ Warning: Final package will not include thirdparty modules"
+            exit 0
           fi
+          
+          echo "=== Merging with thirdparty modules ==="
+          
+          MERGED_OUTPUT_ROOT="${PWD}/merged-output"
+          mkdir -p "${MERGED_OUTPUT_ROOT}"
+          
+          MERGED_STAGING_DIR="${MERGED_OUTPUT_ROOT}/.staging-${PLATFORM}-${KVER}"
+          mkdir -p "${MERGED_STAGING_DIR}"
+          
+          # Copy thirdparty base
+          cp -r "${THIRDPARTY_PLATFORM_DIR}"/* "${MERGED_STAGING_DIR}/" 2>/dev/null || true
+          echo "✓ Copied thirdparty base"
+          
+          # Copy/filter compiled modules based on mode
+          case "${COMPILE_MODE}" in
+            movbe+storage)
+              echo "Merging MOVBE + Storage modules..."
+              
+              # 1. Copy MOVBE module
+              MOVBE_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}-movbe"
+              if [ -d "${MOVBE_OUTPUT_DIR}" ]; then
+                MOVBE_COUNT=$(find "${MOVBE_OUTPUT_DIR}" -name "*.ko" | wc -l)
+                find "${MOVBE_OUTPUT_DIR}" -name "*.ko" -exec cp {} "${MERGED_STAGING_DIR}/" \; 2>/dev/null || true
+                echo "  ✓ Copied ${MOVBE_COUNT} MOVBE module(s)"
+              fi
+              
+              # 2. Filter and copy storage modules
+              STORAGE_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
+              if [ -d "${STORAGE_OUTPUT_DIR}" ]; then
+                echo "  Filtering storage modules..."
+                find "${STORAGE_OUTPUT_DIR}" -name "*.ko" -exec basename {} .ko \; | \
+                  grep -E "(libsas|mpt3sas|mptbase|mptctl|mptsas|mptscsih|mptspi|scsi_transport|sr_mod|hpsa|aacraid|mvsas|3w|aic)" | \
+                  while read -r module; do
+                    if [ -f "${STORAGE_OUTPUT_DIR}/${module}.ko" ]; then
+                      cp "${STORAGE_OUTPUT_DIR}/${module}.ko" "${MERGED_STAGING_DIR}/"
+                      echo "    ✓ ${module}.ko"
+                    fi
+                  done
+              fi
+              
+              TOTAL_COUNT=$(find "${MERGED_STAGING_DIR}" -name "*.ko" | wc -l)
+              echo "✓ Total modules in package: ${TOTAL_COUNT}"
+              ;;
+              
+            storage-only)
+              # Filter storage modules only
+              echo "Filtering storage modules..."
+              COMPILED_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
+              if [ -d "${COMPILED_OUTPUT_DIR}" ]; then
+                find "${COMPILED_OUTPUT_DIR}" -name "*.ko" -exec basename {} .ko \; | \
+                  grep -E "(libsas|mpt3sas|mptbase|mptctl|mptsas|mptscsih|mptspi|scsi_transport|sr_mod|hpsa|aacraid|mvsas|3w|aic)" | \
+                  while read -r module; do
+                    if [ -f "${COMPILED_OUTPUT_DIR}/${module}.ko" ]; then
+                      cp "${COMPILED_OUTPUT_DIR}/${module}.ko" "${MERGED_STAGING_DIR}/"
+                      echo "  ✓ ${module}.ko"
+                    fi
+                  done
+                MODULE_COUNT=$(find "${MERGED_STAGING_DIR}" -name "*.ko" | wc -l)
+                echo "✓ Merged ${MODULE_COUNT} storage module(s)"
+              fi
+              ;;
+              
+            movbe)
+              # Copy MOVBE modules
+              COMPILED_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}-movbe"
+              if [ -d "${COMPILED_OUTPUT_DIR}" ]; then
+                MODULE_COUNT=$(find "${COMPILED_OUTPUT_DIR}" -name "*.ko" | wc -l)
+                find "${COMPILED_OUTPUT_DIR}" -name "*.ko" -exec cp {} "${MERGED_STAGING_DIR}/" \; 2>/dev/null || true
+                echo "✓ Merged ${MODULE_COUNT} MOVBE module(s)"
+              fi
+              ;;
+              
+            *)
+              # Copy all compiled modules (standard)
+              COMPILED_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
+              if [ -d "${COMPILED_OUTPUT_DIR}" ]; then
+                MODULE_COUNT=$(find "${COMPILED_OUTPUT_DIR}" -name "*.ko" | wc -l)
+                find "${COMPILED_OUTPUT_DIR}" -name "*.ko" -exec cp {} "${MERGED_STAGING_DIR}/" \; 2>/dev/null || true
+                echo "✓ Merged ${MODULE_COUNT} compiled module(s)"
+              else
+                echo "⚠ Warning: Compiled output directory not found: ${COMPILED_OUTPUT_DIR}"
+              fi
+              ;;
+          esac
+          
+          # Create final merged tarball (WITHOUT mode suffix)
+          MERGED_PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
+          tar --exclude="*.tgz" -czf "${MERGED_OUTPUT_ROOT}/${MERGED_PACKAGE_NAME}" -C "${MERGED_STAGING_DIR}" .
+          
+          PACKAGE_SIZE=$(du -h "${MERGED_OUTPUT_ROOT}/${MERGED_PACKAGE_NAME}" | awk '{print $1}')
+          echo "✓ Created final package: ${MERGED_PACKAGE_NAME} (${PACKAGE_SIZE})"
+          
+          # Cleanup staging
+          rm -rf "${MERGED_STAGING_DIR}"
 
       - name: Upload to Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}
+          name: modules-${{ matrix.version }}-${{ matrix.platform }}
           path: |
-            ${{ github.workspace }}/source/*.tgz
+            ${{ github.workspace }}/src/merged-output/*.tgz
             
-      - name: clean
+      - name: Clean
+        if: always()
         run: |
-          sudo rm -rf ${{ github.workspace }}/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/*
+          cd ${GITHUB_WORKSPACE}/src
+          rm -rf output/${{ matrix.platform }}-${{ matrix.parm }}* 2>/dev/null || true
+          rm -rf merged-output/.staging-* 2>/dev/null || true
+          rm -rf .movbe-input-* 2>/dev/null || true
+
+  firmware:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Download from Artifacts
+        if: inputs.firmware
+        uses: actions/download-artifact@v4
+        with:
+          path: output
+          pattern: modules-*
+          merge-multiple: true
+
+      - name: Update Firmware from Linux Source
+        if: inputs.firmware
+        run: |
+          mkdir -p firmware
+
+          echo "Copy existing firmware"
+          cp -rf src/firmware/* firmware/
+
+          echo "Extract all modules"
+          for F in ./output/*.tgz; do
+            mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"
+          done
+          
+          echo "Get firmware from linux-firmware"
+          SOURCE=/tmp/linux-firmware
+          git clone https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git ${SOURCE}
+          find ./output -name "*.ko" | while read -r KO_FILE; do
+            KO_NAME=$(basename "${KO_FILE}")
+            while read -r L; do
+              if [ -e "${SOURCE}/${L}" ]; then
+                mkdir -p "$(dirname firmware/${L})"
+                if [ ! -e "firmware/${L}" ]; then
+                  cp -f "${SOURCE}/${L}" "firmware/${L}"
+                  echo "${KO_NAME}: ${L}"
+                fi
+              else
+                [ -e "firmware/${L}" ] && echo "${KO_NAME}: ${L}" || echo "${KO_NAME}: missing ${L}"
+              fi
+            done < <(/sbin/modinfo "${KO_FILE}" | grep ^firmware | awk '{print $2}')
+          done
+
+          tar -zcf firmware.tgz -C firmware .
+
+      - name: Package Existing Firmware
+        if: ${{ !inputs.firmware }}
+        run: |
+          echo "Packaging existing firmware from /src/firmware"
+          tar -zcf firmware.tgz -C src/firmware .
+
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules-firmware
+          path: |
+            firmware.tgz
+
+  release:
+    runs-on: ubuntu-latest
+    needs: firmware
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Init Env
+        run: |
+          git config --global user.email "info@auxxxilium.tech"
+          git config --global user.name "AuxXxilium"
+          sudo timedatectl set-timezone "Europe/Berlin"
+
+      - name: Download from Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: output
+          pattern: modules-*
+          merge-multiple: true
+
+      - name: Calculate Version
+        run: |
+          # Calculate Version
+          VERSION=""
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="`date +'%y.%m.%d'`"
+          fi
+
+          if [ -n "${VERSION}" ]; then
+            # Modify Source File
+            echo "Version: ${VERSION}"
+            echo "${VERSION}" >"./output/VERSION"
+            echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          fi
+
+      - name: Run list.sh to Update Modules List
+        run: |
+          chmod +x ./list.sh
+          ./list.sh
+
+      - name: Add modules.yml to Output
+        run: |
+          cp modules.yml ./output/modules-${{ env.VERSION }}.yml
+
+      - name: Zip Modules
+        run: |
+          zip -9j modules-${{ env.VERSION }}.zip output/*.tgz output/VERSION
+
+      - name: Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ env.VERSION }}
+          makeLatest: ${{ inputs.latest }}
+          prerelease: ${{ inputs.prerelease }}
+          allowUpdates: true
+          body: |
+            ## Included Modules
+
+            The `Modules list` file contains a detailed list of all included modules in this release. You can download it directly using the link below:
+
+            [Modules list](https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/modules-${{ env.VERSION }}.yml)
+
+            For more details, refer to the release notes or the repository documentation.
+          artifacts: |
+              modules-*.zip
+              ./output/*.tgz
+              ./output/modules-*.yml
