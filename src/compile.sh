@@ -103,94 +103,27 @@ compile_modules() {
   fi
 }
 
-# Function to check if a module is storage-related (HBA/SAS/SCSI/RAID)
-# Takes platform and kernel version to check platform-specific configs
+# Function to check if a module depends on scsi_transport_sas (directly or indirectly)
+# These modules will replace thirdparty versions during merge if they exist
 # Returns 0 if module should be included, 1 if excluded
 is_storage_module() {
   local module_name=$1
   local platform=$2
   local kver=$3
   
-  # All potential storage modules
-  if ! [[ "$module_name" =~ ^(libsas|mpt3sas|mptbase|mptctl|mptsas|mptscsih|mptspi|scsi_transport_sas|scsi_transport_spi|sr_mod|hpsa|aacraid|mvsas|3w|aic)$ ]]; then
-    return 1  # Not a storage module
+  # All modules in the scsi_transport_sas dependency chain (direct and indirect)
+  # - scsi_transport_sas: the base SAS transport layer
+  # - scsi_transport_spi: the SPI transport layer (needed by mptspi)
+  # - Direct consumers: mpt3sas, libsas
+  # - MPT Fusion family (mptsas depends on mptbase+mptscsih, shared with other MPT modules):
+  #   mptbase, mptscsih, mptsas, mptctl, mptspi
+  # - Other SAS controllers: hpsa, smartpqi, sd_mod, ses
+  # - Indirect (via libsas): aic94xx, mvsas
+  if [[ "$module_name" =~ ^(scsi_transport_sas|scsi_transport_spi|libsas|mpt3sas|mptbase|mptscsih|mptsas|mptctl|mptspi|hpsa|smartpqi|sd_mod|ses|aic94xx|mvsas)$ ]]; then
+    return 0  # Module is in the list, include it for replacement
   fi
   
-  # If no platform context provided, include all storage modules
-  if [ -z "$platform" ] || [ -z "$kver" ]; then
-    return 0
-  fi
-  
-  local dir="${kver:0:1}.x"
-  local defines_file="${PWD}/${dir}/defines.${platform}"
-  
-  if [ ! -f "$defines_file" ]; then
-    # If defines file doesn't exist, include the module by default
-    return 0
-  fi
-  
-  # Check each module's CONFIG flag to see if it's built-in (=y)
-  # If built-in, exclude it (return 1). If modular (=m) or not set, include it (return 0)
-  local config_flag=""
-  case "$module_name" in
-    libsas)
-      config_flag="CONFIG_SCSI_SAS_LIBSAS"
-      ;;
-    mpt3sas)
-      config_flag="CONFIG_SCSI_MPT3SAS"
-      ;;
-    mptbase|mptscsih)
-      # mptbase and mptscsih depend on CONFIG_FUSION
-      config_flag="CONFIG_FUSION"
-      ;;
-    mptctl)
-      config_flag="CONFIG_FUSION_CTL"
-      ;;
-    mptsas)
-      config_flag="CONFIG_FUSION_SAS"
-      ;;
-    mptspi)
-      config_flag="CONFIG_FUSION_SPI"
-      ;;
-    scsi_transport_sas)
-      config_flag="CONFIG_SCSI_TRANSPORT_SAS"
-      ;;
-    scsi_transport_spi)
-      config_flag="CONFIG_SCSI_TRANSPORT_SPI"
-      ;;
-    sr_mod)
-      config_flag="CONFIG_BLK_DEV_SR"
-      ;;
-    hpsa)
-      config_flag="CONFIG_SCSI_HPSA"
-      ;;
-    aacraid)
-      config_flag="CONFIG_SCSI_AACRAID"
-      ;;
-    mvsas)
-      config_flag="CONFIG_SCSI_MVSAS"
-      ;;
-    3w)
-      config_flag="CONFIG_SCSI_3W_9XXX"
-      ;;
-    aic)
-      config_flag="CONFIG_SCSI_AIC94XX"
-      ;;
-  esac
-  
-  # Check if the CONFIG flag is built-in (=y), modular (=m), or not set
-  # - If =y (built-in) → exclude (return 1)
-  # - If =m (modular) → include (return 0)
-  # - If not set → exclude (return 1), module wasn't compiled
-  if grep -q "^${config_flag}=y$" "$defines_file"; then
-    log_warn "    ⊘ ${module_name}.ko (CONFIG_${config_flag#CONFIG_}=y, built-in)"
-    return 1  # Built-in, so exclude
-  elif grep -q "^${config_flag}=m$" "$defines_file"; then
-    return 0  # Modular, so include
-  else
-    log_warn "    ⊘ ${module_name}.ko (${config_flag} not set)"
-    return 1  # Not configured, so module wasn't compiled - exclude
-  fi
+  return 1  # Not in scsi_transport_sas dependency chain
 }
 
 # Function to merge compiled modules with thirdparty base and create final package
@@ -223,7 +156,7 @@ merge_with_thirdparty() {
 
   # Step 1: Copy thirdparty modules to staging area
   if [ "${MODULE_TYPE}" = "storage-only" ]; then
-    # For storage-only: copy ALL thirdparty modules (we'll overlay with compiled storage only)
+    # For storage-only: copy ALL thirdparty modules (we'll overlay with compiled SAS/SCSI storage only)
     if cp -r "${THIRDPARTY_PLATFORM_DIR}"/* "${MERGED_STAGING_DIR}/" >/dev/null 2>&1; then
       log_info "  ✓ Copied all thirdparty base modules"
     else
@@ -243,28 +176,82 @@ merge_with_thirdparty() {
   if [ -d "${COMPILED_OUTPUT_DIR}" ]; then
     local COMPILED_COUNT=$(find "${COMPILED_OUTPUT_DIR}" -type f -name "*.ko" 2>/dev/null | wc -l)
     if [ "$COMPILED_COUNT" -gt 0 ]; then
-      # If storage-only filter is requested, only copy storage-related modules
+      # If storage-only filter is requested, only copy SAS/SCSI storage-related modules
       if [ "${MODULE_TYPE}" = "storage-only" ]; then
         # Use temporary file to handle subshell issues with variable updates
         local tmp_ko_list=$(mktemp)
         find "${COMPILED_OUTPUT_DIR}" -type f -name "*.ko" > "$tmp_ko_list" 2>&1 || true
         
         local storage_count=0
+        local replaced_count=0
+        local added_count=0
         set +e  # Disable exit-on-error for this loop
         while IFS= read -r ko_file; do
           if [ -z "$ko_file" ]; then continue; fi
           local basename=$(basename "$ko_file" .ko)
+          
+          # Always add movbe_emulator module (for 7.3 builds)
+          if [ "$basename" = "movbe_emulator" ]; then
+            cp "$ko_file" "${MERGED_STAGING_DIR}/" >/dev/null 2>&1 && {
+              log_info "    + Adding movbe_emulator.ko"
+              ((added_count++))
+            }
+            continue
+          fi
+          
           if is_storage_module "$basename" "$PLATFORM" "$KVER" >/dev/null 2>&1; then
-            cp "$ko_file" "${MERGED_STAGING_DIR}/" >/dev/null 2>&1 && ((storage_count++))
+            # Only replace if this module exists in thirdparty (staging dir already has thirdparty modules)
+            if [ -f "${MERGED_STAGING_DIR}/$(basename "$ko_file")" ]; then
+              log_info "    ↻ Replacing thirdparty $(basename "$ko_file") with compiled version"
+              cp "$ko_file" "${MERGED_STAGING_DIR}/" >/dev/null 2>&1 && ((replaced_count++))
+            fi
           fi
         done < "$tmp_ko_list"
         set -e  # Re-enable exit-on-error
         rm -f "$tmp_ko_list"
         
-        log_info "  ✓ Merged $storage_count storage-related compiled module(s) (replacing thirdparty versions)"
+        local summary=""
+        [ $replaced_count -gt 0 ] && summary="${replaced_count} SAS/SCSI module(s) replaced"
+        [ $added_count -gt 0 ] && {
+          [ -n "$summary" ] && summary="$summary, "
+          summary="${summary}${added_count} module(s) added"
+        }
+        
+        if [ -n "$summary" ]; then
+          log_info "  ✓ $summary"
+        else
+          log_info "  ✓ No modules replaced or added"
+        fi
       else
-        find "${COMPILED_OUTPUT_DIR}" -type f -name "*.ko" -exec cp {} "${MERGED_STAGING_DIR}/" \; >/dev/null 2>&1 || true
-        log_info "  ✓ Merged $COMPILED_COUNT compiled module(s) (replacing thirdparty versions)"
+        # For standard mode, track storage module replacements
+        local tmp_ko_list=$(mktemp)
+        find "${COMPILED_OUTPUT_DIR}" -type f -name "*.ko" > "$tmp_ko_list" 2>&1 || true
+        
+        local replaced_storage_count=0
+        local total_copied=0
+        set +e  # Disable exit-on-error for this loop
+        while IFS= read -r ko_file; do
+          if [ -z "$ko_file" ]; then continue; fi
+          local basename=$(basename "$ko_file" .ko)
+          
+          # Check if it's a storage module and exists in thirdparty
+          if is_storage_module "$basename" "$PLATFORM" "$KVER" >/dev/null 2>&1; then
+            if [ -f "${MERGED_STAGING_DIR}/$(basename "$ko_file")" ]; then
+              log_info "    ↻ Replacing thirdparty $(basename "$ko_file") with compiled version"
+              ((replaced_storage_count++))
+            fi
+          fi
+          
+          cp "$ko_file" "${MERGED_STAGING_DIR}/" >/dev/null 2>&1 && ((total_copied++))
+        done < "$tmp_ko_list"
+        set -e  # Re-enable exit-on-error
+        rm -f "$tmp_ko_list"
+        
+        if [ $replaced_storage_count -gt 0 ]; then
+          log_info "  ✓ Merged $total_copied compiled module(s) ($replaced_storage_count SAS/SCSI storage modules replaced thirdparty versions)"
+        else
+          log_info "  ✓ Merged $total_copied compiled module(s)"
+        fi
       fi
     else
       log_warn "  ⚠ No .ko files found in ${COMPILED_OUTPUT_DIR}"
@@ -476,7 +463,7 @@ compile_binary() {
 }
 
 # Function to select platforms and versions, then compile
-# Parameters: compile_mode (standard|movbe|storage-only)
+# Parameters: compile_mode (standard|movbe|full-merge)
 select_and_compile() {
   local compile_mode=$1
   local mode_label=""
@@ -485,8 +472,8 @@ select_and_compile() {
     movbe)
       mode_label="MOVBE Module"
       ;;
-    storage-only)
-      mode_label="Storage Modules Only"
+    full-merge)
+      mode_label="Full Build + Thirdparty Merge + MOVBE for 7.3"
       ;;
     *)
       mode_label="Standard"
@@ -597,9 +584,55 @@ select_and_compile() {
             movbe)
               compile_movbe_module "$PLATFORM" "$KVER" "$TOOLKIT_VER" "$DOCKER_IMAGE"
               ;;
-            storage-only)
+            full-merge)
+              log_info "========================================"
+              log_info "Building: ${PLATFORM} ${TOOLKIT_VER} (kernel ${KVER})"
+              log_info "========================================"
+              
+              # Step 1: Compile all modules (skip auto-merge)
               compile_modules "$PLATFORM" "$KVER" "$TOOLKIT_VER" "$DOCKER_IMAGE" 1
+              
+              # Step 2: For 7.3 builds, compile MOVBE module (skip auto-merge)
+              if [ "$TOOLKIT_VER" = "7.3" ]; then
+                log_info "Additional: Compiling MOVBE module for 7.3 build..."
+                
+                # Compile MOVBE without merge
+                DIR="${KVER:0:1}.x"
+                DEFINES_FILE="${PWD}/${DIR}/defines.${PLATFORM}"
+                
+                if [ -d "${PWD}/movbe" ] && [ -f "${PWD}/movbe/Makefile" ]; then
+                  TEMP_MOVBE_INPUT="${PWD}/.movbe-input-${PLATFORM}-${KVER}"
+                  mkdir -p "${TEMP_MOVBE_INPUT}"
+                  
+                  cp "${PWD}/movbe"/*.c "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
+                  cp "${PWD}/movbe"/Makefile "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
+                  
+                  {
+                    head -n 1 "${DEFINES_FILE}"
+                    cat "${PWD}/movbe/defines.movbe"
+                  } > "${TEMP_MOVBE_INPUT}/defines.${PLATFORM}"
+                  
+                  OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
+                  mkdir -p "${OUTPUT_DIR}"
+                  LOG_FILE="${PWD}/logs/compile-${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe.txt"
+                  
+                  if docker run -u $(id -u) --rm -t -v "${TEMP_MOVBE_INPUT}":/input -v "${OUTPUT_DIR}":/output \
+                    -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
+                    ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee -a "${LOG_FILE}"; then
+                    log_info "✓ MOVBE module compiled successfully"
+                  else
+                    log_error "✗ MOVBE module compilation failed"
+                  fi
+                  
+                  rm -rf "${TEMP_MOVBE_INPUT}"
+                fi
+              fi
+              
+              # Step 3: Merge with thirdparty, replacing storage modules from list + MOVBE
               merge_with_thirdparty "$PLATFORM" "$KVER" "$TOOLKIT_VER" "storage-only"
+              
+              log_info "✓ Completed build for ${PLATFORM} ${TOOLKIT_VER}"
+              echo ""
               ;;
             *)
               compile_modules "$PLATFORM" "$KVER" "$TOOLKIT_VER" "$DOCKER_IMAGE"
@@ -632,7 +665,7 @@ main() {
   echo ""
   echo "1) Compile standard modules"
   echo "2) Compile MOVBE module"
-  echo "3) Compile storage modules"
+  echo "3) Compile all modules + merge thirdparty + MOVBE for 7.3"
   echo ""
   read -r -p "Select compilation mode: " compile_mode
   echo ""
@@ -642,7 +675,7 @@ main() {
       select_and_compile "movbe"
       ;;
     3)
-      select_and_compile "storage-only"
+      select_and_compile "full-merge"
       ;;
     1|*)
       if [ -n "$1" ]; then
