@@ -137,7 +137,7 @@ jobs:
         run: |
           git config --global user.email "info@auxxxilium.tech"
           git config --global user.name "AuxXxilium"
-          sudo timedatectl set-timezone "Europe/Berlin" 
+          sudo timedatectl set-timezone "Europe/Berlin"
 
       - name: Tar to Artifacts
         run: |
@@ -148,10 +148,7 @@ jobs:
 
           MODULES_PATH="${{ github.workspace }}/modules/${{ matrix.platform }}-${{ matrix.version }}-${{ matrix.parm }}"
 
-          echo "strip modules"
-          [ -d "${MODULES_PATH}" ] && find "${MODULES_PATH}" -name "*.ko" -exec strip --strip-unneeded {} \;
-
-          echo "copy 3rd modules"
+          echo "copy modules"
           [ -d "${MODULES_PATH}" ] && cp -Rvf "${MODULES_PATH}/." "${{ github.workspace }}/source/output"
 
           VERSION="`date +'%y.%m.%d'`"
@@ -192,7 +189,7 @@ jobs:
             for F in ./output/*.tgz; do
               mkdir "${F%.tgz}" && tar -xzf "${F}" -C "${F%.tgz}"
             done
-            
+
             echo "get firmware"
             SOURCE=/tmp/linux-firmware
             git clone https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git ${SOURCE}
