@@ -1,0 +1,98 @@
+menu "Network"
+
+config SYNO_SKIP_RXDROP_BY_CORE
+	bool "Skip RX packets drop is increasing"
+	default y
+
+config SYNO_REMOVE_TCP_DEBUG
+	bool "Remove tcp debug message"
+	default y
+
+config SYNO_IPV6_RFC_4862
+	bool "IPv6 Stateless Address Autoconfiguration"
+	default y
+
+config SYNO_BONDING_INIT_STATUS
+	bool "Initial the bonding status"
+	default y
+
+config SYNO_BONDING_FIX_ACTIVE
+	bool "Fix a bug in active backup bonding mode"
+	default y
+
+config SYNO_FIX_8023AD_LINK_STATUS
+	bool "Fix 802.3ad link status bug"
+	default y
+
+config SYNO_IPV6_LINKLOCAL
+	bool "Assign an interface to IPV6 link local address automatically."
+	default y
+
+config SYNO_COMPAT_WIRELESS
+	bool "Select kernel config for compat-wireless"
+	default y
+	select WIRELESS_EXT
+	select WEXT_PRIV
+
+config SYNO_SFP_UNSUPPORTED_NOTIFY
+	bool "SFP+ module unsupported notify"
+	default y
+
+config SYNO_PHY_INIT_88E151X
+	bool "Enable phy driver of the phy 88E151X"
+	default n
+
+config SYNO_IPV6_EXPORT_IN6ADDR_ANY
+	bool "Export in6addr_any value for modules"
+	default y
+
+config SYNO_OVS_MODE_REFINEMENT
+	bool "Refine Synology Open vSwitch Mode"
+	default y
+
+config SYNO_NF_NAT_WORKAROUND
+	bool "Fix BUG_ON on nf_nat_setup_info"
+	default y
+
+config SYNO_REMOVE_RA_ERROR_LOG
+	bool "To remove error log when receiving RA"
+	default y
+
+config SYNO_ARMADA37XX_LOG_REDUCE
+	bool "Remove Armada3700 unnecessary logs"
+	default y
+	depends on SYNO_LSP_ARMADA_17_06_01
+
+config SYNO_ARMADA37XX_MVNETA_FIX
+	bool "Apply marvell mvneta patches after 17_06"
+	default y
+	depends on SYNO_LSP_ARMADA_17_06_01
+
+config SYNO_ARMADA37XX_IRQ_ADJUST
+	bool "Adjust mvneta interrupt affinity"
+	default y
+	depends on SYNO_LSP_ARMADA_17_06_01
+
+config SYNO_ARMADA37XX_MTU_LIMITATION
+	bool "limit armada37xx mtu to 9000"
+	default y
+	depends on SYNO_LSP_ARMADA_17_06_01
+
+config SYNO_BACKPORT_GLINKSETTINGS
+	bool "ethtool get_link_ksettings/set_link_ksettings"
+	default y
+
+config SYNO_AMD_XGBE_PORTING
+	bool "AMD Xgbe driver porting"
+	default n
+	depends on AMD_XGBE
+
+config SYNO_FIX_ALB_OVERFLOW
+	bool "Fix the overflow bug in alb tx balance mechanism"
+	default y
+
+config SYNO_ALB_USE_64BIT_LOAD
+	bool "use 64 bit varialbe to store load of each tx slave/client"
+	default y
+
+endmenu #Network

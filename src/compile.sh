@@ -40,7 +40,7 @@ compile_modules() {
   fi
 
   # Create output directory for Docker
-  local OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
+  local OUTPUT_DIR="${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}"
   mkdir -p "${OUTPUT_DIR}"
 
   # Create logs directory
@@ -53,6 +53,7 @@ compile_modules() {
   fi
 
   # Run the Docker container with compiler warning suppression
+  # Note: Docker writes directly to /output, so we mount OUTPUT_DIR directly to /output
   log_info "Starting Docker compilation for ${PLATFORM} (kernel ${KVER})"
   log_info "Build log: ${LOG_FILE}"
   if docker run -u $(id -u) --rm -t -v "${PWD}/${DIR}":/input -v "${OUTPUT_DIR}":/output \
@@ -63,25 +64,25 @@ compile_modules() {
     log_error "Docker compilation failed"
     return 1
   fi
-  
+
   if [ ! -d "${OUTPUT_DIR}" ]; then
     log_error "Output directory ${OUTPUT_DIR} does not exist"
     return 1
   fi
 
-  local FILE_COUNT=$(ls -1 "${OUTPUT_DIR}" 2>/dev/null | wc -l)
+  local FILE_COUNT=$(find "${OUTPUT_DIR}" -type f -name "*.ko" 2>/dev/null | wc -l)
   if [ "$FILE_COUNT" -eq 0 ]; then
-    log_error "No files in ${OUTPUT_DIR}"
+    log_error "No .ko files found in ${OUTPUT_DIR}"
     return 1
   fi
 
-  log_info "Found $FILE_COUNT file(s) in ${OUTPUT_DIR}"
+  log_info "Found $FILE_COUNT .ko file(s) in ${OUTPUT_DIR}"
 
   # Handle output directory naming and packaging (skip if SKIP_MERGE is 1 for storage-only mode)
   if [ "${SKIP_MERGE}" -ne 1 ]; then
     PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
     local TARBALL_PATH="${PWD}/output/${PACKAGE_NAME}"
-    
+
     log_info "Creating tarball: ${TARBALL_PATH}"
     if tar --exclude="*.tgz" -czf "${TARBALL_PATH}" -C "${OUTPUT_DIR}" .; then
       if [ -f "${TARBALL_PATH}" ]; then
@@ -110,7 +111,10 @@ is_storage_module() {
   local module_name=$1
   local platform=$2
   local kver=$3
-  
+
+  # Only replace storage modules for 4.x kernel builds
+  [[ "$kver" =~ ^4\. ]] || return 1
+
   # All modules in the scsi_transport_sas dependency chain (direct and indirect)
   # - scsi_transport_sas: the base SAS transport layer
   # - scsi_transport_spi: the SPI transport layer (needed by mptspi)
@@ -122,7 +126,7 @@ is_storage_module() {
   if [[ "$module_name" =~ ^(scsi_transport_sas|scsi_transport_spi|libsas|mpt3sas|mptbase|mptscsih|mptsas|mptctl|mptspi|hpsa|smartpqi|sd_mod|ses|aic94xx|mvsas)$ ]]; then
     return 0  # Module is in the list, include it for replacement
   fi
-  
+
   return 1  # Not in scsi_transport_sas dependency chain
 }
 
@@ -170,9 +174,9 @@ merge_with_thirdparty() {
       log_warn "  ⚠ Could not copy thirdparty modules (directory may be empty)"
     fi
   fi
-  
+
   # Step 2: Copy compiled .ko files, overwriting thirdparty versions
-  local COMPILED_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
+  local COMPILED_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}"
   if [ -d "${COMPILED_OUTPUT_DIR}" ]; then
     local COMPILED_COUNT=$(find "${COMPILED_OUTPUT_DIR}" -type f -name "*.ko" 2>/dev/null | wc -l)
     if [ "$COMPILED_COUNT" -gt 0 ]; then
@@ -181,7 +185,7 @@ merge_with_thirdparty() {
         # Use temporary file to handle subshell issues with variable updates
         local tmp_ko_list=$(mktemp)
         find "${COMPILED_OUTPUT_DIR}" -type f -name "*.ko" > "$tmp_ko_list" 2>&1 || true
-        
+
         local storage_count=0
         local replaced_count=0
         local added_count=0
@@ -189,7 +193,7 @@ merge_with_thirdparty() {
         while IFS= read -r ko_file; do
           if [ -z "$ko_file" ]; then continue; fi
           local basename=$(basename "$ko_file" .ko)
-          
+
           # Always add movbe_emulator module (for 7.3 builds)
           if [ "$basename" = "movbe_emulator" ]; then
             cp "$ko_file" "${MERGED_STAGING_DIR}/" >/dev/null 2>&1 && {
@@ -198,7 +202,7 @@ merge_with_thirdparty() {
             }
             continue
           fi
-          
+
           if is_storage_module "$basename" "$PLATFORM" "$KVER" >/dev/null 2>&1; then
             # Only replace if this module exists in thirdparty (staging dir already has thirdparty modules)
             if [ -f "${MERGED_STAGING_DIR}/$(basename "$ko_file")" ]; then
@@ -209,14 +213,14 @@ merge_with_thirdparty() {
         done < "$tmp_ko_list"
         set -e  # Re-enable exit-on-error
         rm -f "$tmp_ko_list"
-        
+
         local summary=""
         [ $replaced_count -gt 0 ] && summary="${replaced_count} SAS/SCSI module(s) replaced"
         [ $added_count -gt 0 ] && {
           [ -n "$summary" ] && summary="$summary, "
           summary="${summary}${added_count} module(s) added"
         }
-        
+
         if [ -n "$summary" ]; then
           log_info "  ✓ $summary"
         else
@@ -226,14 +230,14 @@ merge_with_thirdparty() {
         # For standard mode, track storage module replacements
         local tmp_ko_list=$(mktemp)
         find "${COMPILED_OUTPUT_DIR}" -type f -name "*.ko" > "$tmp_ko_list" 2>&1 || true
-        
+
         local replaced_storage_count=0
         local total_copied=0
         set +e  # Disable exit-on-error for this loop
         while IFS= read -r ko_file; do
           if [ -z "$ko_file" ]; then continue; fi
           local basename=$(basename "$ko_file" .ko)
-          
+
           # Check if it's a storage module and exists in thirdparty
           if is_storage_module "$basename" "$PLATFORM" "$KVER" >/dev/null 2>&1; then
             if [ -f "${MERGED_STAGING_DIR}/$(basename "$ko_file")" ]; then
@@ -241,12 +245,12 @@ merge_with_thirdparty() {
               ((replaced_storage_count++))
             fi
           fi
-          
+
           cp "$ko_file" "${MERGED_STAGING_DIR}/" >/dev/null 2>&1 && ((total_copied++))
         done < "$tmp_ko_list"
         set -e  # Re-enable exit-on-error
         rm -f "$tmp_ko_list"
-        
+
         if [ $replaced_storage_count -gt 0 ]; then
           log_info "  ✓ Merged $total_copied compiled module(s) ($replaced_storage_count SAS/SCSI storage modules replaced thirdparty versions)"
         else
@@ -259,13 +263,13 @@ merge_with_thirdparty() {
   else
     log_warn "  ⚠ Compiled output directory not found: ${COMPILED_OUTPUT_DIR}"
   fi
-  
+
   # Step 3: Create final tarball in merged-output
   local MERGED_PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
   local MERGED_TARBALL_PATH="${MERGED_OUTPUT_ROOT}/${MERGED_PACKAGE_NAME}"
 
   log_info "Creating merged package: ${MERGED_TARBALL_PATH}"
-  
+
   if tar --exclude="*.tgz" -czf "${MERGED_TARBALL_PATH}" -C "${MERGED_STAGING_DIR}" .; then
     if [ -f "${MERGED_TARBALL_PATH}" ]; then
       local SIZE=$(du -h "${MERGED_TARBALL_PATH}" | awk '{print $1}')
@@ -317,13 +321,13 @@ compile_movbe_module() {
   # Create a temporary directory to stage MOVBE with platform-specific defines
   local TEMP_MOVBE_INPUT="${PWD}/.movbe-input-${PLATFORM}-${KVER}"
   mkdir -p "${TEMP_MOVBE_INPUT}"
-  
+
   log_info "Staging MOVBE module for ${PLATFORM}..."
-  
+
   # Copy MOVBE source files
   cp "${PWD}/movbe"/*.c "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
   cp "${PWD}/movbe"/Makefile "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
-  
+
   # Create platform-specific defines file by combining platform config with MOVBE config
   {
     # Extract the first CONFIG_* line (platform identifier) from the original defines file
@@ -331,9 +335,9 @@ compile_movbe_module() {
     # Append the rest of the MOVBE configuration
     cat "${PWD}/movbe/defines.movbe"
   } > "${TEMP_MOVBE_INPUT}/defines.${PLATFORM}"
-  
+
   # Create output directory for Docker
-  local OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}-movbe"
+  local OUTPUT_DIR="${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe"
   mkdir -p "${OUTPUT_DIR}"
 
   # Create logs directory
@@ -341,6 +345,7 @@ compile_movbe_module() {
   local LOG_FILE="${PWD}/logs/compile-${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe.txt"
 
   # Run the Docker container using the proper compile-module function from do.sh
+  # Note: Docker writes directly to /output, so we mount OUTPUT_DIR directly to /output
   log_info "Starting Docker MOVBE module compilation for ${PLATFORM} (kernel ${KVER})"
   log_info "Build log: ${LOG_FILE}"
   if docker run -u $(id -u) --rm -t -v "${TEMP_MOVBE_INPUT}":/input -v "${OUTPUT_DIR}":/output \
@@ -356,24 +361,24 @@ compile_movbe_module() {
 
   # Clean up temporary input directory
   rm -rf "${TEMP_MOVBE_INPUT}"
-  
+
   if [ ! -d "${OUTPUT_DIR}" ]; then
     log_error "Output directory ${OUTPUT_DIR} does not exist"
     return 1
   fi
 
-  local FILE_COUNT=$(ls -1 "${OUTPUT_DIR}" 2>/dev/null | wc -l)
+  local FILE_COUNT=$(find "${OUTPUT_DIR}" -type f -name "*.ko" 2>/dev/null | wc -l)
   if [ "$FILE_COUNT" -eq 0 ]; then
-    log_error "No .ko files in ${OUTPUT_DIR}"
+    log_error "No .ko files found in ${OUTPUT_DIR}"
     return 1
   fi
 
-  log_info "Found $FILE_COUNT file(s) in ${OUTPUT_DIR}"
+  log_info "Found $FILE_COUNT .ko file(s) in ${OUTPUT_DIR}"
 
   # Handle output directory naming and packaging
   PACKAGE_NAME="${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe.tgz"
   local TARBALL_PATH="${PWD}/output/${PACKAGE_NAME}"
-  
+
   log_info "Creating tarball: ${TARBALL_PATH}"
   if tar --exclude="*.tgz" -czf "${TARBALL_PATH}" -C "${OUTPUT_DIR}" .; then
     if [ -f "${TARBALL_PATH}" ]; then
@@ -400,12 +405,12 @@ compile_binary() {
   # Check if version directory exists (use major version for output dir)
   local DIR_PATTERN=$(echo "${BUILD_SCRIPT}" | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo "")
   local DIR="${DIR_PATTERN:0:1}.x"
-  
+
   if [ -z "$DIR" ]; then
     log_error "Error: Could not determine version directory from build script name"
     return 1
   fi
-  
+
   [ ! -d "${PWD}/${DIR}" ] && return
 
   # Check if build script exists
@@ -446,7 +451,7 @@ compile_binary() {
   # Create tarball with platform name only
   local PACKAGE_NAME="${PLATFORM}-binary.tgz"
   local TARBALL_PATH="${PWD}/output/${PACKAGE_NAME}"
-  
+
   log_info "Creating tarball: ${TARBALL_PATH}"
   if tar --exclude="*.tgz" -czf "${TARBALL_PATH}" -C "${OUTPUT_DIR}" .; then
     if [ -f "${TARBALL_PATH}" ]; then
@@ -467,7 +472,7 @@ compile_binary() {
 select_and_compile() {
   local compile_mode=$1
   local mode_label=""
-  
+
   case "$compile_mode" in
     movbe)
       mode_label="MOVBE Module"
@@ -494,7 +499,7 @@ select_and_compile() {
       versions+=("$TOOLKIT_VER")
     fi
   done < "${PLATFORMS_FILE}"
-  
+
   IFS=$'\n' versions=($(sort <<<"${versions[*]}"))
   unset IFS
 
@@ -503,11 +508,11 @@ select_and_compile() {
   for i in "${!versions[@]}"; do
     printf "%2d) %s\n" $((i+1)) "${versions[$i]}"
   done
-  
+
   echo ""
   read -r -p "Enter version numbers (space-separated, or 'all' for all): " version_selection
   echo ""
-  
+
   local -a selected_versions=()
   if [ -z "$version_selection" ] || [ "$version_selection" = "all" ]; then
     selected_versions=("${versions[@]}")
@@ -520,42 +525,42 @@ select_and_compile() {
       fi
     done
   fi
-  
+
   # Build unique platforms for selected versions
   log_info "=== Available Platforms ($mode_label) ==="
   echo ""
-  
+
   local -a all_platforms=()
   local idx=1
-  
+
   while read -r PLATFORM KVER TOOLKIT_VER DOCKER_IMAGE; do
     [[ "$PLATFORM" =~ ^#.*$ || -z "$PLATFORM" ]] && continue
     TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
-    
+
     local skip=1
     for sel_ver in "${selected_versions[@]}"; do
       [ "$TOOLKIT_VER" = "$sel_ver" ] && { skip=0; break; }
     done
     [ $skip -eq 1 ] && continue
-    
+
     PLATFORM=$(echo "${PLATFORM}" | xargs)
-    
+
     local platform_exists=0
     for existing in "${all_platforms[@]}"; do
       [ "$existing" = "$PLATFORM" ] && { platform_exists=1; break; }
     done
-    
+
     if [ $platform_exists -eq 0 ]; then
       all_platforms+=("$PLATFORM")
       printf "%2d) %s\n" "$idx" "$PLATFORM"
       idx=$((idx + 1))
     fi
   done < "${PLATFORMS_FILE}"
-  
+
   echo ""
   read -r -p "Enter platform numbers (space-separated, or 'all' for all): " platform_selection
   echo ""
-  
+
   local -a selected_platforms=()
   if [ -z "$platform_selection" ] || [ "$platform_selection" = "all" ]; then
     selected_platforms=("${all_platforms[@]}")
@@ -578,7 +583,7 @@ select_and_compile() {
         TOOLKIT_VER=$(echo "${TOOLKIT_VER}" | xargs)
         KVER=$(echo "${KVER}" | xargs)
         DOCKER_IMAGE=$(echo "${DOCKER_IMAGE}" | xargs)
-        
+
         if [ "$PLATFORM" = "$SELECTED_PLATFORM" ] && [ "$TOOLKIT_VER" = "$SELECTED_VERSION" ]; then
           case "$compile_mode" in
             movbe)
@@ -588,50 +593,71 @@ select_and_compile() {
               log_info "========================================"
               log_info "Building: ${PLATFORM} ${TOOLKIT_VER} (kernel ${KVER})"
               log_info "========================================"
-              
+
               # Step 1: Compile all modules (skip auto-merge)
               compile_modules "$PLATFORM" "$KVER" "$TOOLKIT_VER" "$DOCKER_IMAGE" 1
-              
+
               # Step 2: For 7.3 builds, compile MOVBE module (skip auto-merge)
               if [ "$TOOLKIT_VER" = "7.3" ]; then
                 log_info "Additional: Compiling MOVBE module for 7.3 build..."
-                
+
                 # Compile MOVBE without merge
                 DIR="${KVER:0:1}.x"
                 DEFINES_FILE="${PWD}/${DIR}/defines.${PLATFORM}"
-                
+
                 if [ -d "${PWD}/movbe" ] && [ -f "${PWD}/movbe/Makefile" ]; then
                   TEMP_MOVBE_INPUT="${PWD}/.movbe-input-${PLATFORM}-${KVER}"
                   mkdir -p "${TEMP_MOVBE_INPUT}"
-                  
+
                   cp "${PWD}/movbe"/*.c "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
                   cp "${PWD}/movbe"/Makefile "${TEMP_MOVBE_INPUT}/" 2>/dev/null || true
-                  
+
                   {
                     head -n 1 "${DEFINES_FILE}"
                     cat "${PWD}/movbe/defines.movbe"
                   } > "${TEMP_MOVBE_INPUT}/defines.${PLATFORM}"
-                  
-                  OUTPUT_DIR="${PWD}/output/${PLATFORM}-${KVER}"
-                  mkdir -p "${OUTPUT_DIR}"
+
+                  MOVBE_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe"
+                  mkdir -p "${MOVBE_OUTPUT_DIR}"
                   LOG_FILE="${PWD}/logs/compile-${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe.txt"
-                  
-                  if docker run -u $(id -u) --rm -t -v "${TEMP_MOVBE_INPUT}":/input -v "${OUTPUT_DIR}":/output \
+
+                  if docker run -u $(id -u) --rm -t -v "${TEMP_MOVBE_INPUT}":/input -v "${MOVBE_OUTPUT_DIR}":/output \
                     -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
                     ${DOCKER_IMAGE} compile-module "${PLATFORM}" 2>&1 | tee -a "${LOG_FILE}"; then
                     log_info "✓ MOVBE module compiled successfully"
+
+                    # Copy MOVBE .ko files to the main output directory for this platform/version
+                    OUTPUT_DIR="${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}"
+                    find "${MOVBE_OUTPUT_DIR}" -name "*.ko" -exec cp {} "${OUTPUT_DIR}/" \; 2>/dev/null
                   else
                     log_error "✗ MOVBE module compilation failed"
                   fi
-                  
+
                   rm -rf "${TEMP_MOVBE_INPUT}"
                 fi
               fi
-              
+
               # Step 3: Merge with thirdparty, replacing storage modules from list + MOVBE
+              log_info "Step 3: Merging with thirdparty and creating final package..."
               merge_with_thirdparty "$PLATFORM" "$KVER" "$TOOLKIT_VER" "storage-only"
-              
+
+              # Step 4: Clean up intermediate build artifacts
+              log_info "Step 4: Cleaning up intermediate build artifacts..."
+              OUTPUT_DIR="${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}"
+              if [ -d "${OUTPUT_DIR}" ]; then
+                rm -rf "${OUTPUT_DIR}"
+                log_info "  Removed ${OUTPUT_DIR}"
+              fi
+
+              # Clean up MOVBE output directory if it exists
+              MOVBE_OUTPUT_DIR="${PWD}/output/${PLATFORM}-${TOOLKIT_VER}-${KVER}-movbe"
+              if [ -d "${MOVBE_OUTPUT_DIR}" ]; then
+                rm -rf "${MOVBE_OUTPUT_DIR}"
+                log_info "  Removed ${MOVBE_OUTPUT_DIR}"
+              fi
+
               log_info "✓ Completed build for ${PLATFORM} ${TOOLKIT_VER}"
+              log_info "  Final package: merged-output/${PLATFORM}-${TOOLKIT_VER}-${KVER}.tgz"
               echo ""
               ;;
             *)
@@ -669,7 +695,7 @@ main() {
   echo ""
   read -r -p "Select compilation mode: " compile_mode
   echo ""
-  
+
   case "$compile_mode" in
     2)
       select_and_compile "movbe"

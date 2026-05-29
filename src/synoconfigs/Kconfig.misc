@@ -1,0 +1,262 @@
+menu "MISC Features"
+
+config SYNO_HDDMON
+	tristate "Syno HDD monitor"
+	depends on SYNO_ATA_PWR_CTRL && SYNO_HDD_HOTPLUG
+
+config SYNO_SMBUS_HDDMON
+	tristate "Syno SMBus HDD Monitor"
+
+config SYNO_SMBUS_HDD_POWERCTL
+	bool "Syno Control HDD power by SMBus"
+	default n
+
+config SYNO_PLUGIN_INTERFACE
+	bool "Synology plugin interface for kernel modules"
+	default y
+
+config SYNO_INCREASE_READAHEAD
+	bool "Increase default max readahead"
+	default y
+
+config SYNO_MAX_READAHEAD_SIZE
+	int "Set default max readahead size"
+	depends on SYNO_INCREASE_READAHEAD
+	default "192" if X86_64
+	default "512" if !X86_64
+
+config SYNO_BLOCK_LIMIT_BAD_SECTOR_MSG
+	bool "Reduce the rate of bad sector messages"
+	default y
+
+config SYNO_IO_ERROR_LIMIT_MSG
+	bool "Reduce the rate of IO error print messages"
+	default y
+
+config SYNO_IO_ERROR_LIMIT_MSG_SHIFT
+	int "Reduce the rate of IO error print messages - for the variable number"
+	depends on SYNO_IO_ERROR_LIMIT_MSG
+	default "12"
+
+config SYNO_EMULATE_U64_DIVISOR
+	bool "Emulate caculating of u64 remainder"
+	default y
+
+config SYNO_APPARMOR_PATCH
+	bool "Declare APPARMOR usage for userspace"
+	default y
+	depends on SECURITY_APPARMOR
+
+config SYNO_POWEROFF_INFO_PRINT
+	bool "Show pma1 and pma2 in poweroff procedure"
+	default n
+
+config SYNO_LOWER_MD_RESYNC_NICE
+	bool "Lower nice value to MD resync threads"
+	depends on SYNO_ALPINE
+	default n
+
+config SYNO_FIX_DM_DISK_ALIGNMENT
+	bool "Fix issue of device mapper disk alignment problem"
+	default y
+
+config SYNO_OOM_DUMP_MODULE
+	bool "Dump modules and occupied memory sizes while OOM"
+	default y
+
+config SYNO_ELEVATE_LOG_LEVEL
+	bool "Elevate log level of kernel log"
+	default y
+
+config SYNO_DEGRADE_LOG_LEVEL
+	bool "degrade log level"
+	default y
+
+config SYNO_DYNAMIC_IDENTIFY_CPU_NAME
+	bool "dynamic identify CPU name"
+	default y
+	depends on SYNO_BROADWELL
+
+config SYNO_ARM64_CPU_MODELNAME_DISPLAY
+	tristate "Display cpu model for arm64"
+	default y
+	depends on ARM64
+
+config SYNO_SKIP_DETACH_DVB_USB_DIB0700
+	bool "skip dvb_detach for dvb-usb-dib0700 driver"
+	default y
+
+config SYNO_SKIP_UNUSED_ERROR_LOG_PCTV452E
+	bool "skip unused error log from pctv452e driver"
+	default y
+
+config SYNO_DISABL_HAVE_ARCH_HUGE_VMAP
+	bool "diable HAVE_ARCH_HUGE_VMAP in 4.4 kernel"
+	default n
+
+config SYNO_PSTORE
+	bool "Synology enhancement of Pstore mechanism"
+	default n
+	depends on PSTORE
+
+config SYNO_FIX_RTC_WAKE_AFTER_POWER_FAILURE
+	bool "fix rtc wake after power failure"
+	default y
+	depends on SYNO_X64
+
+config SYNO_IE_SOFT_POWER_OFF
+	bool "IE soft power off"
+	depends on SYNO_PURLEY
+	select ACPI_BUTTON
+	default n
+
+config SYNO_IE_SOFT_POWER_OFF
+	bool "IE soft power off"
+	depends on SYNO_PURLEY
+	select ACPI_BUTTON
+	default n
+
+config SYNO_SATA_CHECK
+	tristate "show sata chip amplitude/de-emphasis adjustment."
+	default n
+
+config SYNO_SATA_TEST
+	tristate "sata controller pci register sysfs setting interface for amplitude/de-emphasis adjustment."
+	default n
+
+config SYNO_SPECULATION_DEFAULT_OFF
+	bool "Set speculation mitigation to default off"
+	default n
+	depends on PAGE_TABLE_ISOLATION
+
+config SYNO_IOSCHED_CFQ_PROMOTE_SYNC_TUNABLE
+	bool "add cfs tunable parameter with promote sync"
+	default y
+	depends on IOSCHED_CFQ
+
+config SYNO_DISABLE_SYSRQ_B_DUMP_STACK
+	bool "do NOT dump stack when trigger sysrq b"
+	default y
+
+config SYNO_FIX_TICK_REPROGRAM
+	bool "Fix tick reprogram bug"
+	default n
+
+config SYNO_FORCE_CF9_REBOOT
+	bool "Support CF9 Force reboot"
+	default n
+	depends on X86_64
+
+config SYNO_OOM_NOTIFICATION
+	bool "Support oom notification"
+	default y
+
+config SYNO_KERNEL_MODULE_REMOVAL_LOGGING
+	bool "add logging about kernel module removal"
+	default y
+
+config SYNO_DEVICE_ROM_UPDATE
+	tristate "Kernel module for updating roms of devices"
+	default n
+
+config SYNO_COND_RESCHED
+	bool "Add cond_resched to path that might run long time"
+	default y
+	depends on !PREEMPT
+
+config SYNO_KEXEC_TEST
+	bool "Test whether the kernel is booted with Kexec"
+	default y
+	depends on X86_64
+
+config SYNO_UART_TO_SPI_CONSOLE_LOG
+	tristate "sysfs for trigger uart to spi log out gpio"
+	default n
+
+config SYNO_DEV_ALLOC_PAGES
+	bool "Enable synology dev alloc pages"
+	default y
+
+config SYNO_OUT_OF_RESOURCE_LOG
+	bool "log for out of resource event occurrence"
+	default y
+
+config SYNO_RND_ENTROPY_GEN
+	bool "generate random entropy"
+	default y
+
+config SYNO_ACPI_APEI_AER_DBGMSG
+	bool "Print AER register in APCI APEI log"
+	default y
+	depends on ACPI_APEI_PCIEAER
+
+config SYNO_HDD_POWER_CONTROL_TEST
+	tristate "HDD dynamic power control sysfs for testing/verifying"
+	default n
+
+config SYNO_GCC12_COMPAT
+	bool "Fix build failed for GCC 12 toolchain"
+	default y
+
+config SYNO_AHCI_REG_READ_TEST
+	tristate "Test AHCI register read"
+	depends on SATA_AHCI
+	default m
+
+endmenu #MISC Features
+
+menu "Cgroup"
+
+endmenu #Cgroup
+
+config SYNO_CGROUP_SKIP_MEMCG
+	bool "skip memcg check in critical path"
+	default y
+	depends on MEMCG
+
+menu "Encryption"
+
+config SYNO_KEY
+	bool "use keys supply by our system"
+	depends on KEYS
+
+config SYNO_SYSTEM_UNTRUSTED_KEYRING
+	bool "Provide system-wide ring of untrusted keys"
+	depends on KEYS
+
+config SYNO_SYSTEM_UNTRUSTED_KEYS
+	string "Additional X.509 keys for default system untrusted keyring"
+	depends on SYNO_SYSTEM_UNTRUSTED_KEYRING
+
+config SYNO_REMOVE_X509_DATE_VALIDATION_CONSTRAIN
+	bool "Remote x509 date validation constrain"
+	depends on KEYS
+
+endmenu #Encryption
+
+menu "Udev"
+
+config SYNO_DEPRECATED_UEVENT_ENV
+	bool "Export deprecate uevent environment to userspace"
+	default y
+
+endmenu #Udev
+
+menu "Bios Log"
+
+config SYNO_MEMORY_TRAINING_FAILED_LOG
+	bool "Print the MRC postcode if memory training fail happened at last boot up"
+	depends on X86
+	default y
+
+config SYNO_MRC_POSTCODE_CMOS_ADDR
+	hex "The address of cmos storing failed MRC postcode"
+	depends on SYNO_MEMORY_TRAINING_FAILED_LOG
+	default 0x48
+
+config SYNO_ACPI_FPDT
+	bool "ACPI Firmware Performance Data Table(FPDT)"
+	depends on X86_64 && ACPI
+	default y
+
+endmenu #BIOS LOG

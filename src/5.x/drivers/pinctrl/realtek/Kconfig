@@ -1,0 +1,12 @@
+
+config PINCTRL_RTD
+	bool "Realtek DHC pin controller driver"
+	depends on ARCH_REALTEK
+	default y
+	select PINMUX
+	select GENERIC_PINCONF
+
+config PINCTRL_RTD_SELFTEST
+	bool "Realtek DHC pin controller driver self test"
+	depends on PINCTRL_RTD
+	default n

@@ -1,0 +1,166 @@
+menu "Platform Selection"
+
+config SYNO_X64
+	bool
+	default y
+	depends on X86_64
+
+config SYNO_SELECT_PLATFORM
+	def_bool y
+choice
+	prompt "Synology platform"
+
+config SYNO_BROMOLOW
+	bool "Intel-Bromolow"
+	depends on X86_64
+
+config SYNO_GRANTLEY
+	bool "Intel Grantley"
+	depends on X86_64
+
+config SYNO_AVOTON
+	bool "Intel-Avoton"
+	depends on X86_64
+
+config SYNO_BRASWELL
+	bool "Intel-Braswell"
+	depends on X86_64
+
+config SYNO_APOLLOLAKE
+	bool "Intel-Apollolake"
+	depends on X86_64
+
+config SYNO_KVMX64
+	bool "KVM X64 Virtual machine"
+	depends on X86_64
+
+config SYNO_BROADWELL
+	bool "Intel-Broadwell"
+	depends on X86_64
+
+config SYNO_DENVERTON
+	bool "Intel-Denverton"
+	depends on X86_64
+
+config SYNO_DOCKERX64
+	bool "Docker X64 Virtual machine"
+	depends on X86_64
+
+config SYNO_RTD129X
+	bool "realtek rtd1296"
+	depends on ARM64
+	select SYNO_LSP_RTD129X
+
+config SYNO_ARMADA37XX
+	bool "Marvell armada37xx"
+	depends on ARM64 && ARCH_MVEBU
+	select SYNO_LSP_ARMADA
+
+config SYNO_PURLEY
+	bool "Intel Purley"
+	depends on X86_64
+
+config SYNO_COFFEELAKE
+	bool "Intel Coffee Lake"
+	depends on X86_64
+
+config SYNO_BROADWELLNTB
+	bool "Intel Broadwell with ntb"
+	depends on X86_64
+
+config SYNO_NEXTKVMX64
+	bool "Next OS KVM X64 Virtual Machine"
+	depends on X86_64
+
+config SYNO_GEMINILAKE
+	bool "Intel-Geminilake"
+	depends on X86_64
+
+config SYNO_RTD1619
+	bool "realtek rtd1619"
+	depends on ARM64
+	select SYNO_LSP_RTD1619
+
+config SYNO_SKYLAKED
+	bool "Intel Skylake-D"
+	depends on X86_64
+
+config SYNO_V1000
+	bool "AMD Ryzen Embedded V1000"
+	depends on X86_64
+
+config SYNO_BROADWELLNTBAP
+	bool "Intel Broadwell with ntb in AP mode"
+	depends on X86_64
+
+config SYNO_KVMCLOUD
+	bool "KVM X64 Virtual machine on cloud"
+	depends on X86_64
+
+config SYNO_EPYC7002
+	bool "AMD EPYC Embedded 7002 Rome"
+	depends on X86_64
+
+config SYNO_R1000
+	bool "AMD Ryzen Embedded R1000"
+	depends on X86_64
+
+config SYNO_ICELAKED
+	bool "INTEL ICELAKE-D"
+	depends on X86_64
+
+endchoice
+
+config SYNO_LSP_ARMADA
+	bool "Apply Marvell armada LSP"
+	depends on ARM64 && ARCH_MVEBU
+
+config SYNO_LSP_ARMADA_16_12
+	bool "Apply Marvell armada LSP devel-16.12"
+	depends on SYNO_LSP_ARMADA
+	default y
+
+config SYNO_LSP_ARMADA_17_02_02
+	bool "Apply Marvell armada LSP devel-17.02.02"
+	depends on SYNO_LSP_ARMADA && SYNO_LSP_ARMADA_16_12
+	default y
+
+config SYNO_LSP_ARMADA_17_04_02
+	bool "Apply Marvell armada LSP devel-17.04.02"
+	depends on SYNO_LSP_ARMADA && SYNO_LSP_ARMADA_16_12 && SYNO_LSP_ARMADA_17_02_02
+	default y
+
+config SYNO_LSP_ARMADA_17_06_01
+	bool "Apply Marvell armada LSP devel-17.06.01"
+	depends on SYNO_LSP_ARMADA && SYNO_LSP_ARMADA_16_12 && SYNO_LSP_ARMADA_17_02_02 && SYNO_LSP_ARMADA_17_04_02
+	default y
+
+config SYNO_LSP_ARMADA_17_10
+	bool "Apply Marvell armada LSP devel-17.10"
+	depends on SYNO_LSP_ARMADA && SYNO_LSP_ARMADA_16_12 && SYNO_LSP_ARMADA_17_02_02 && SYNO_LSP_ARMADA_17_04_02 && SYNO_LSP_ARMADA_17_06_01
+	default y
+
+config SYNO_LSP_RTD129X
+	bool "Apply Realtek rtd129x LSP"
+	depends on ARM64 && ARCH_RTD129X
+
+config SYNO_LSP_RTD1619
+	bool "Apply Realtek rtd1619 LSP"
+	depends on ARM64 && ARCH_RTD16xx
+
+config SYNO_DUAL_HEAD
+	bool "Synology Dual Head Host"
+	default n
+	depends on SYNO_BROMOLOW || SYNO_BROADWELL || SYNO_BROADWELLNTB || SYNO_BROADWELLNTBAP
+
+config SYNO_SAS
+	bool "Synology SAS Support"
+	default y
+	depends on SYNO_BROMOLOW || SYNO_BROADWELL || SYNO_GRANTLEY || SYNO_PURLEY || SYNO_COFFEELAKE || SYNO_BROADWELLNTB || SYNO_BROADWELLNTBAP
+
+config SYNO_NTB
+	bool "Synology NTB support"
+	default n
+	depends on SYNO_BROADWELLNTB || SYNO_BROADWELLNTBAP
+
+endmenu #Platform Selection
