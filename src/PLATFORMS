@@ -1,16 +1,4 @@
 # PLATFORM         KVER       TOOLKIT_VER  DOCKER_IMAGE
-# 7.1 Release
-apollolake         4.4.180    7.1          auxxxilium/syno-compiler:7.1
-broadwell          4.4.180    7.1          auxxxilium/syno-compiler:7.1
-broadwellnk        4.4.180    7.1          auxxxilium/syno-compiler:7.1
-broadwellnkv2      4.4.180    7.1          auxxxilium/syno-compiler:7.1
-broadwellntbap     4.4.180    7.1          auxxxilium/syno-compiler:7.1
-denverton          4.4.180    7.1          auxxxilium/syno-compiler:7.1
-epyc7002           5.10.55    7.1          auxxxilium/syno-compiler:7.1
-geminilake         4.4.180    7.1          auxxxilium/syno-compiler:7.1
-purley             4.4.180    7.1          auxxxilium/syno-compiler:7.1
-r1000              4.4.180    7.1          auxxxilium/syno-compiler:7.1
-v1000              4.4.180    7.1          auxxxilium/syno-compiler:7.1
 
 # 7.2 Release
 apollolake         4.4.302    7.2          auxxxilium/syno-compiler:7.2
