@@ -21,7 +21,7 @@ obj-y				+= video/
 #obj-y				+= idle/
 
 # IPMI must come before ACPI in order to provide IPMI opregion support
-#obj-$(CONFIG_IPMI_HANDLER)	+= char/ipmi/
+obj-$(CONFIG_IPMI_HANDLER)	+= char/
 
 obj-$(CONFIG_ACPI)		+= acpi/
 #obj-$(CONFIG_SFI)		+= sfi/
@@ -83,7 +83,7 @@ obj-y				+= net/
 obj-$(CONFIG_FUSION)		+= message/
 #obj-y				+= firewire/
 #obj-$(CONFIG_UIO)		+= uio/
-#obj-$(CONFIG_VFIO)		+= vfio/
+obj-$(CONFIG_VFIO)		+= vfio/
 obj-y				+= cdrom/
 #obj-y				+= auxdisplay/
 #obj-$(CONFIG_PCCARD)		+= pcmcia/
@@ -125,7 +125,7 @@ obj-$(CONFIG_CPU_FREQ)		+= cpufreq/
 obj-y				+= mmc/
 #obj-$(CONFIG_MEMSTICK)		+= memstick/
 #obj-y				+= leds/
-#obj-$(CONFIG_INFINIBAND)	+= infiniband/
+obj-$(CONFIG_INFINIBAND)	+= infiniband/
 #obj-$(CONFIG_SGI_SN)		+= sn/
 #obj-y				+= firmware/
 #obj-$(CONFIG_CRYPTO)		+= crypto/
@@ -142,7 +142,7 @@ obj-y		+= dca/
 #obj-$(CONFIG_BCMA)		+= bcma/
 #obj-$(CONFIG_VHOST_RING)	+= vhost/
 #obj-$(CONFIG_VLYNQ)		+= vlynq/
-#obj-$(CONFIG_STAGING)		+= staging/
+obj-$(CONFIG_STAGING)		+= staging/
 #obj-y				+= platform/
 #common clk code
 #obj-y				+= clk/

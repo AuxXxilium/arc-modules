@@ -12,8 +12,8 @@
 #obj-$(CONFIG_GENERIC_PHY)	+= phy/
 
 # GPIO must come after pinctrl as gpios may need to mux pins etc
-#obj-$(CONFIG_PINCTRL)		+= pinctrl/
-#obj-$(CONFIG_GPIOLIB)		+= gpio/
+obj-$(CONFIG_PINCTRL)		+= pinctrl/
+obj-$(CONFIG_GPIOLIB)		+= gpio/
 #obj-y				+= pwm/
 
 #obj-y				+= pci/
@@ -24,7 +24,7 @@ obj-y				+= video/
 #obj-y				+= idle/
 
 # IPMI must come before ACPI in order to provide IPMI opregion support
-#obj-y				+= char/ipmi/
+obj-y				+= char/
 
 obj-$(CONFIG_ACPI)		+= acpi/
 #obj-$(CONFIG_SFI)		+= sfi/
@@ -60,7 +60,8 @@ obj-$(CONFIG_VIRTIO)		+= virtio/
 #obj-y				+= iommu/
 
 # gpu/ comes after char for AGP vs DRM startup and after iommu
-obj-y				+= gpu/
+# Disabled: drm.ko requires dma_buf/dma_fence symbols not exported by Syno kernel
+#obj-y				+= gpu/
 
 #obj-$(CONFIG_CONNECTOR)		+= connector/
 
@@ -91,7 +92,7 @@ obj-y				+= net/
 #obj-y		+= message/
 #obj-y				+= firewire/
 #obj-$(CONFIG_UIO)		+= uio/
-#obj-$(CONFIG_VFIO)		+= vfio/
+obj-$(CONFIG_VFIO)		+= vfio/
 #obj-y				+= cdrom/
 #obj-y				+= auxdisplay/
 #obj-$(CONFIG_PCCARD)		+= pcmcia/
@@ -128,10 +129,10 @@ obj-$(CONFIG_HWMON)		+= hwmon/
 #obj-$(CONFIG_PM_OPP)		+= opp/
 obj-$(CONFIG_CPU_FREQ)		+= cpufreq/
 #obj-$(CONFIG_CPU_IDLE)		+= cpuidle/
-#obj-y				+= mmc/
+obj-y				+= mmc/
 #obj-$(CONFIG_MEMSTICK)		+= memstick/
 #obj-$(CONFIG_NEW_LEDS)		+= leds/
-#obj-$(CONFIG_INFINIBAND)	+= infiniband/
+obj-$(CONFIG_INFINIBAND)	+= infiniband/
 #obj-y				+= firmware/
 #obj-$(CONFIG_CRYPTO)		+= crypto/
 #obj-$(CONFIG_SUPERH)		+= sh/
@@ -149,7 +150,7 @@ obj-$(CONFIG_CPU_FREQ)		+= cpufreq/
 #obj-$(CONFIG_VHOST)		+= vhost/
 #obj-$(CONFIG_VLYNQ)		+= vlynq/
 #obj-$(CONFIG_GREYBUS)		+= greybus/
-#obj-$(CONFIG_STAGING)		+= staging/
+obj-$(CONFIG_STAGING)		+= staging/
 #obj-y				+= platform/
 
 #obj-$(CONFIG_MAILBOX)		+= mailbox/

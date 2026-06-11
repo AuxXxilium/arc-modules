@@ -45,6 +45,90 @@ kernel_url() {
   echo "https://cdn.kernel.org/pub/linux/kernel/v${major}.x/linux-${kver}.tar.xz"
 }
 
+# ---------------------------------------------------------------------------
+# Synology GPL source helpers
+# ---------------------------------------------------------------------------
+
+# DSM toolkit version → GPL source build slug (from archive.synology.com)
+# Format: toolkit_ver → build_slug used in the archive URL
+declare -A DSM_BUILD=(
+  ["7.2"]="7.2-72806"
+  ["7.3"]="7.3-86009"
+)
+
+# URL for the Synology GPL kernel source tarball
+# Args: toolkit_ver  platform  kver  (e.g. 7.2 epyc7002 5.10.55)
+syno_gpl_url() {
+  local toolkit_ver="$1"
+  local platform="$2"
+  local kver="$3"
+  local series="${kver%.*}"          # e.g. 5.10  or  4.4
+  local build="${DSM_BUILD[$toolkit_ver]}"
+  [ -z "$build" ] && return 1
+  echo "https://global.synologydownload.com/download/ToolChain/Synology%20NAS%20GPL%20Source/${build}/${platform}/linux-${series}.x.txz"
+}
+
+# Cache path for a Syno GPL tarball
+syno_gpl_cache_path() {
+  local toolkit_ver="$1"
+  local platform="$2"
+  local kver="$3"
+  local series="${kver%.*}"
+  echo "${KERNELS_CACHE}/syno-${toolkit_ver}-${platform}-linux-${series}.x.txz"
+}
+
+# Download Syno GPL kernel source if not already cached
+ensure_syno_kernel_source() {
+  local toolkit_ver="$1"
+  local platform="$2"
+  local kver="$3"
+  local tarball
+  tarball="$(syno_gpl_cache_path "$toolkit_ver" "$platform" "$kver")"
+
+  mkdir -p "${KERNELS_CACHE}"
+
+  if [ -f "${tarball}" ]; then
+    log_info "  Syno GPL source already cached: $(basename "${tarball}")"
+    return 0
+  fi
+
+  local url
+  url="$(syno_gpl_url "$toolkit_ver" "$platform" "$kver")" || {
+    log_warn "  No Syno GPL URL known for toolkit ${toolkit_ver}"
+    return 1
+  }
+
+  log_info "  Downloading Syno GPL source for ${platform} (DSM ${toolkit_ver})..."
+  log_info "  URL: ${url}"
+
+  if command -v curl &>/dev/null; then
+    curl -L --retry 3 --retry-delay 5 -o "${tarball}" "${url}" || {
+      log_error "  Download failed: ${url}"
+      rm -f "${tarball}"
+      return 1
+    }
+  elif command -v wget &>/dev/null; then
+    wget -q --tries=3 -O "${tarball}" "${url}" || {
+      log_error "  Download failed: ${url}"
+      rm -f "${tarball}"
+      return 1
+    }
+  else
+    log_error "  Neither curl nor wget found"
+    return 1
+  fi
+
+  log_info "  Downloaded: $(basename "${tarball}")"
+}
+
+# Detect the top-level prefix inside a tarball (e.g. "linux-5.10.x" or "linux-5.10.x/")
+# Prints the prefix without trailing slash, or empty string if files are at top level.
+tarball_prefix() {
+  local tarball="$1"
+  # Peek at the first entry; strip trailing slash
+  tar -tf "${tarball}" 2>/dev/null | head -1 | sed 's|/$||; s|/.*||'
+}
+
 # Download kernel tarball if not already cached
 ensure_kernel_source() {
   local kver="$1"
@@ -125,9 +209,12 @@ DRIVER_SUBDIRS=(
   "drivers/ata"
   "drivers/block"
   "drivers/cdrom"
+  "drivers/char"
   "drivers/firewire"
+  "drivers/gpio"
   "drivers/gpu"
   "drivers/hwmon"
+  "drivers/hv"
   "drivers/i2c"
   "drivers/infiniband"
   "drivers/input"
@@ -139,6 +226,7 @@ DRIVER_SUBDIRS=(
   "drivers/net"
   "drivers/nvme"
   "drivers/pci"
+  "drivers/pinctrl"
   "drivers/platform"
   "drivers/rtc"
   "drivers/scsi"
@@ -151,6 +239,8 @@ DRIVER_SUBDIRS=(
   "drivers/video"
   "drivers/virtio"
   "drivers/watchdog"
+  "arch/x86/kvm"
+  "virt"
   "block"
   "fs/exfat"
   "fs/fuse"
@@ -159,6 +249,10 @@ DRIVER_SUBDIRS=(
   "lib"
   "include"
   "net/9p"
+  "net/ipv4"
+  "net/ipv6"
+  "net/netfilter"
+  "net/sched"
   "net/wireless"
   "sound"
   "Kconfig"
@@ -169,7 +263,7 @@ setup_workspace() {
   local platform="$1"
   local kver="$2"                          # Syno kernel version (output naming / headers)
   local toolkit_ver="$3"
-  local upstream_kver="${4:-${kver}}"      # upstream source tarball version
+  local upstream_kver="${4:-${kver}}"      # upstream source tarball version (fallback)
   local ws_dir="${WORKSPACE_ROOT}/${platform}-${toolkit_ver}-${kver}"
 
   log_step "Setting up workspace: ${ws_dir}"
@@ -178,36 +272,126 @@ setup_workspace() {
 
   local major="${kver:0:1}"
   local src_overlay="${SCRIPT_DIR}/${major}.x"
-  local tarball="${KERNELS_CACHE}/linux-${upstream_kver}.tar.xz"
 
-  # ── Step A: extract selected subtrees from the upstream tarball ──────────
-  if [ -f "${tarball}" ]; then
-    log_info "  Extracting upstream kernel source subtrees from linux-${upstream_kver}..."
+  # ── Step A: extract selected subtrees from kernel source ────────────────
+  # Prefer the Synology GPL tarball (exact source matching the Docker headers).
+  # Fall back to the upstream kernel.org tarball if Syno GPL is unavailable.
 
-    # Build the list of paths to extract (prefixed with linux-<upstream_kver>/)
+  local syno_tarball
+  syno_tarball="$(syno_gpl_cache_path "${toolkit_ver}" "${platform}" "${kver}")"
+
+  local source_tarball=""
+  local source_prefix=""
+  local source_label=""
+
+  # Try Syno GPL first
+  if ensure_syno_kernel_source "${toolkit_ver}" "${platform}" "${kver}" 2>/dev/null \
+       && [ -f "${syno_tarball}" ]; then
+    source_tarball="${syno_tarball}"
+    source_prefix="$(tarball_prefix "${syno_tarball}")"
+    source_label="Syno GPL (${toolkit_ver} / ${platform})"
+  else
+    log_warn "  Syno GPL source unavailable – falling back to upstream linux-${upstream_kver}"
+    local upstream_tarball="${KERNELS_CACHE}/linux-${upstream_kver}.tar.xz"
+    if [ ! -f "${upstream_tarball}" ]; then
+      ensure_kernel_source "${upstream_kver}" || true
+    fi
+    if [ -f "${upstream_tarball}" ]; then
+      source_tarball="${upstream_tarball}"
+      source_prefix="linux-${upstream_kver}"
+      source_label="upstream linux-${upstream_kver}"
+    fi
+  fi
+
+  if [ -n "${source_tarball}" ]; then
+    log_info "  Extracting source subtrees from ${source_label}..."
+
+    # Build extract path list using the detected prefix
     local extract_paths=()
     for subdir in "${DRIVER_SUBDIRS[@]}"; do
-      extract_paths+=("linux-${upstream_kver}/${subdir}")
+      if [ -n "${source_prefix}" ]; then
+        extract_paths+=("${source_prefix}/${subdir}")
+      else
+        extract_paths+=("${subdir}")
+      fi
     done
 
-    # Extract source files only – explicitly exclude Makefiles and Kbuild files
-    # so that the Docker OOT build system only sees the src/X.x/ Makefiles
-    # (upstream Makefiles use syntax the DSM kernel build cannot handle).
-    tar -xf "${tarball}" \
-      --strip-components=1 \
+    # Extract source files – exclude Makefiles/Kbuild/Kconfig so only the
+    # X.x/ overlay Makefiles are used (upstream ones use in-tree syntax).
+    local strip_args=()
+    [ -n "${source_prefix}" ] && strip_args=(--strip-components=1)
+    tar -xf "${source_tarball}" \
+      "${strip_args[@]}" \
       -C "${ws_dir}" \
       --wildcards \
-      --exclude="*/Makefile" \
-      --exclude="*/Makefile.*" \
-      --exclude="*/Kbuild" \
-      --exclude="*/Kconfig" \
-      --exclude="*/Kconfig.*" \
+      --exclude="Makefile" \
+      --exclude="Makefile.*" \
+      --exclude="Kbuild" \
+      --exclude="Kconfig" \
+      --exclude="Kconfig.*" \
       "${extract_paths[@]}" 2>/dev/null || {
-      log_warn "  Some paths were not found in tarball (normal for older kernels)"
+      log_warn "  Some paths were not found in tarball (normal if a subdir doesn't exist for this platform)"
     }
-    log_info "  Upstream source extracted (Makefiles/Kbuild excluded)"
+    log_info "  Source extracted (Makefiles/Kbuild excluded)"
+
+    # Belt-and-suspenders: remove any Makefile/Kbuild/Kconfig that survived.
+    find "${ws_dir}" \( -name "Makefile" -o -name "Makefile.*" \
+      -o -name "Kbuild" -o -name "Kconfig" -o -name "Kconfig.*" \) \
+      -delete 2>/dev/null || true
+
+    # ── Step A2: re-extract Makefiles for complex subtrees ───────────────────
+    # net/, vfio, staging, ipmi, arch/x86/kvm use composite objects or subdir
+    # trees that need their upstream Makefiles.  The X.x/ overlay still wins
+    # in Step B by overwriting the specific files it manages.
+    local makefile_paths=()
+    for subdir in \
+      "drivers/char/ipmi" \
+      "drivers/staging" \
+      "drivers/vfio" \
+      "arch/x86/kvm" \
+      "net/ipv4" \
+      "net/ipv6" \
+      "net/netfilter" \
+      "net/sched" \
+      "virt"; do
+      if [ -n "${source_prefix}" ]; then
+        makefile_paths+=("${source_prefix}/${subdir}")
+      else
+        makefile_paths+=("${subdir}")
+      fi
+    done
+    tar -xf "${source_tarball}" \
+      "${strip_args[@]}" \
+      -C "${ws_dir}" \
+      --wildcards \
+      "${makefile_paths[@]}" 2>/dev/null || true
+    log_info "  Makefiles re-extracted for net/, kvm/, vfio, staging, ipmi"
+
+    # ── Step A3: OOT patches for arch/x86/kvm ────────────────────────────────
+    # kvm Makefile uses -Iarch/x86/kvm (in-tree relative path) → patch to -I$(src)
+    if [ -f "${ws_dir}/arch/x86/kvm/Makefile" ]; then
+      sed -i 's|-Iarch/x86/kvm|-I$(src)|g' "${ws_dir}/arch/x86/kvm/Makefile"
+    fi
+    # kvm trace.h hardcodes TRACE_INCLUDE_PATH relative to the in-tree build dir.
+    # Override with the absolute Docker mount path.
+    if [ -f "${ws_dir}/arch/x86/kvm/trace.h" ]; then
+      sed -i 's|#define TRACE_INCLUDE_PATH .*arch/x86/kvm.*|#define TRACE_INCLUDE_PATH /tmp/input/arch/x86/kvm|' \
+        "${ws_dir}/arch/x86/kvm/trace.h"
+    fi
+    # kvm_get/clear_cpu_l1tf_flush_l1d are declared in the Docker hardirq.h
+    # but only under an #ifdef that Syno's kernel config does not enable.
+    # Replace the two call sites with the equivalent direct per-CPU variable
+    # accesses, which is exactly what those inline functions do.
+    if [ -f "${ws_dir}/arch/x86/kvm/vmx/vmx.c" ]; then
+      sed -i \
+        's|kvm_get_cpu_l1tf_flush_l1d()|0|g' \
+        "${ws_dir}/arch/x86/kvm/vmx/vmx.c"
+      sed -i \
+        's|kvm_clear_cpu_l1tf_flush_l1d()|((void)0)|g' \
+        "${ws_dir}/arch/x86/kvm/vmx/vmx.c"
+    fi
   else
-    log_warn "  Kernel tarball not found (${tarball}) – using only overlay sources"
+    log_warn "  No kernel source available – using only overlay sources"
   fi
 
   # ── Step B: overlay custom/out-of-tree drivers from src/X.x/ ────────────
@@ -274,12 +458,30 @@ compile_upstream() {
   log_info "  Output       : ${output_dir}"
   log_info "  Log          : ${log_file}"
 
+  # Bypass compile-module entirely.
+  # compile-module uses isatty() to pick its build strategy:
+  #   • TTY present  → single-pass:  make -C /opt/<platform>/build M=/tmp/input modules
+  #   • TTY absent   → per-module loop, one make call per .c file
+  # The per-module path hits a GNU make 4.3 incompatibility in the Synology kernel
+  # Makefile ("Makefile:332: *** multiple target patterns. Stop.").
+  # In a scripted/CI environment docker run -t has no host TTY, so compile-module
+  # always falls into the broken path.
+  # Fix: use --entrypoint bash and run the exact same make command that
+  # compile-module would use in single-pass mode, mounting at /tmp/input.
+  local _cflags="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function"
+
   local docker_exit=0
   docker run -u "$(id -u)" --rm \
-      -v "${ws_dir}":/input \
+      --entrypoint bash \
+      -v "${ws_dir}":/tmp/input \
       -v "${output_dir}":/output \
-      -e CFLAGS="-Wno-address -Wno-unused-result -Wno-misleading-indentation -Wno-array-parameter -Wno-unused-function" \
-      "${docker_image}" compile-module "${platform}" >> "${log_file}" 2>&1 || docker_exit=$?
+      -e CFLAGS="${_cflags}" \
+      "${docker_image}" \
+      -c "make -C /opt/${platform}/build M=/tmp/input modules KBUILD_MODPOST_WARN=1 \
+          \$(grep '^CONFIG_' /tmp/input/defines.${platform} | tr '\n' ' ') \
+          && find /tmp/input -name '*.ko' -exec cp {} /output/ \; \
+          && find /output -name '*.ko' -exec strip --strip-debug {} \;" \
+      >> "${log_file}" 2>&1 || docker_exit=$?
 
   if [ "${docker_exit}" -ne 0 ]; then
     log_error "  Compilation FAILED (exit ${docker_exit}) – last 30 lines of log:"
@@ -462,11 +664,15 @@ select_and_build() {
 
   # Collect unique kernel series present in the selected platform/version combos
   # and resolve upstream kver interactively (or via --kver flag)
-  declare -A upstream_kver_map  # series -> chosen upstream kver
+  # Upstream source is only used as fallback when Syno GPL download fails.
+  # The --kver flag allows overriding the fallback version (e.g. for testing).
+  declare -A upstream_kver_map  # series -> fallback upstream kver
 
-  if [ -z "${kver_override}" ]; then
-    # Gather the unique series (e.g. "4.4", "5.10") for selected combos
-    declare -A series_to_syno
+  if [ -n "${kver_override}" ]; then
+    # Manual override: use the same version for all series
+    log_info "  Upstream fallback kver override: ${kver_override}"
+  else
+    # Pre-fill with the Syno kver for each series as the fallback
     for sp in "${sel_plats[@]}"; do
       for sv in "${sel_vers[@]}"; do
         while read -r P K TV _D; do
@@ -474,53 +680,11 @@ select_and_build() {
           P="$(echo "$P" | xargs)"; K="$(echo "$K" | xargs)"; TV="$(echo "$TV" | xargs)"
           [ "$P" = "$sp" ] && [ "$TV" = "$sv" ] || continue
           local series="${K%.*}"
-          series_to_syno["$series"]="$K"
+          upstream_kver_map["$series"]="$K"
           break
         done < "${PLATFORMS_FILE}"
       done
     done
-
-    echo ""
-    log_info "=== Upstream kernel source version ==="
-    log_info "  Fetching latest stable versions from kernel.org..."
-    echo ""
-
-    local idx=1
-    declare -A series_idx_map
-    declare -a series_list
-    for series in $(echo "${!series_to_syno[@]}" | tr ' ' '\n' | sort); do
-      local syno_kver="${series_to_syno[$series]}"
-      local latest
-      latest="$(fetch_latest_kver_for_series "${series}" "${syno_kver}")"
-      # Mark EOL series
-      local eol_note=""
-      [ "${series}" = "4.4" ] && eol_note=" (EOL — latest is final)"
-      printf "  %d) %-8s  Syno: %-12s  Latest: %s%s\n" \
-        "$idx" "${series}.x" "${syno_kver}" "${latest}" "${eol_note}"
-      series_list+=("${series}")
-      # Pre-fill map with latest; user can override below
-      upstream_kver_map["${series}"]="${latest}"
-      ((idx++))
-    done
-
-    echo ""
-    echo "  For each series, enter a custom version or press Enter to accept the latest."
-    echo "  Enter 'syno' to use the exact Synology version (safest, no new drivers)."
-    echo ""
-    for series in "${series_list[@]}"; do
-      local syno_kver="${series_to_syno[$series]}"
-      local suggested="${upstream_kver_map[$series]}"
-      local label="${suggested}"
-      [ "${series}" = "4.4" ] && label="${syno_kver} (EOL)"
-      read -r -p "  ${series}.x source version [${label}]: " user_input
-      if [ "${user_input}" = "syno" ]; then
-        upstream_kver_map["${series}"]="${syno_kver}"
-      elif [ -n "${user_input}" ]; then
-        upstream_kver_map["${series}"]="${user_input}"
-      fi
-      log_info "  Using ${series}.x source: ${upstream_kver_map[$series]}"
-    done
-    echo ""
   fi
 
   # Execute builds
@@ -532,9 +696,9 @@ select_and_build() {
         P="$(echo "$P" | xargs)"; K="$(echo "$K" | xargs)"
         TV="$(echo "$TV" | xargs)"; D="$(echo "$D" | xargs)"
         [ "$P" = "$sp" ] && [ "$TV" = "$sv" ] || continue
-        # Resolve upstream kver: --kver flag > series-specific choice > Syno kver
-        local series="${K%.*}"  # e.g. 5.10 from 5.10.55
-        local ukver="${upstream_kver_map[$series]:-${kver_override:-${K}}}"
+        # Upstream fallback kver: --kver flag > Syno kver for this series
+        local series="${K%.*}"
+        local ukver="${kver_override:-${upstream_kver_map[$series]:-${K}}}"
         if build_platform "$P" "$K" "$TV" "$D" "$ukver"; then
           ((ok++))
         else
@@ -572,7 +736,7 @@ Usage: $(basename "$0") [OPTIONS]
 Options:
   --platform <name>  Build only this platform (e.g. epyc7002). Can be repeated.
   --version  <ver>   Build only this DSM version (e.g. 7.3). Can be repeated.
-  --kver     <ver>   Override upstream kernel source version (e.g. 5.10.220)
+  --kver     <ver>   Override upstream kernel source version used as fallback (e.g. 5.10.55)
   --regen            Re-run gen-defines.sh before building
   --no-download      Skip kernel source download (use cached tarballs only)
   --clean            Remove all workspace/staging directories and exit
