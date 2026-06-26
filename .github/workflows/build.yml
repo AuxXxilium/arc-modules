@@ -127,6 +127,10 @@ jobs:
             platform: v1000nk
             parm: "5.10.55"
 
+          - version: 7.4
+            platform: epyc7003ntb
+            parm: "5.10.55"
+
     runs-on: ubuntu-latest
 
     steps:
