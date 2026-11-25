@@ -10,9 +10,11 @@ symbol that builds it and prints, one per line,
     CONFIG_SYMBOL<TAB>object<TAB>first error
 
 for the symbols this build added (n in the baseline), which build.sh turns
-off before the next pass. A failed object of a symbol the official kernel
-itself enables is printed as "OFFICIAL<TAB>object<TAB>error" and makes the
-exit status 2: that is a broken tree, not a driver to drop.
+off before the next pass. A failed object of a module the official kernel
+itself builds (a borrowed or newer source against the official headers) is
+printed as "OFFICIAL<TAB>module object<TAB>error": its symbol cannot change,
+so build.sh takes that module out of its Makefile instead, and DSM's own
+copy of it is the one that loads.
 """
 import os
 import re
@@ -72,6 +74,22 @@ def symbol_for(linux, obj):
     return found
 
 
+def module_obj(linux, obj):
+    """The obj-$(CONFIG_..) object that `obj` ends up in (itself, or the
+    composite module it is a part of), relative to linux/."""
+    d, name = os.path.split(obj)
+    lines = makefile_lines(os.path.join(linux, d))
+    for line in lines:
+        m = OBJ_RULE.match(line)
+        if m and name in m.group(2).split():
+            return obj
+    for line in lines:
+        m = PART_RULE.match(line)
+        if m and name in m.group(3).split():
+            return module_obj(linux, os.path.join(d, m.group(1) + '.o'))
+    return obj
+
+
 def selectors(linux, sym):
     """Symbols whose Kconfig entry has "select <sym>" (or "imply")."""
     name = sym[len('CONFIG_'):]
@@ -125,8 +143,10 @@ def main():
         syms = [s for s in symbol_for(linux, obj) if cur.get(s, 'n') != 'n']
         ours = [s for s in syms if base.get(s, 'n') == 'n']
         if not ours:
-            print(f'OFFICIAL\t{obj}\t{err}')
-            rc = 2
+            mod = module_obj(linux, obj)
+            if mod not in seen:
+                seen.add(mod)
+                print(f'OFFICIAL\t{mod}\t{err}')
             continue
         for s in ours:
             if s not in seen:

@@ -201,12 +201,20 @@ prepare_tree() {
 
   log "${t}: unpack GPL kernel source"
   tar -xaf "${IN_GPL}" -C "${w}/linux" --strip-components=1
-  # The official kernel's headers (the toolkit's) against the source's: a
-  # header that differs is a struct or inline the modules may see
-  # differently. Expected to be (nearly) empty; listed in the report.
-  (cd "${w}/toolkit/build" && find include arch/x86/include -name '*.h' -type f       -not -path '*/generated/*' -not -path 'include/config/*' | sort | while read -r h; do
-        [ -f "${w}/linux/${h}" ] || continue
-        cmp -s "${h}" "${w}/linux/${h}" || echo "${h}"
+  # The headers modules see must be the official kernel's. The toolkit has
+  # them (build/include, build/arch/x86/include); where the source's differ
+  # (a 7.3 source for a 7.2 kernel, a borrowed platform, or Synology's own
+  # drift) the toolkit's version replaces the source's, and the report lists
+  # every header replaced.
+  (cd "${w}/toolkit/build" && find include arch/x86/include -name '*.h' -type f \
+      -not -path '*/generated/*' -not -path 'include/config/*' | sort | while read -r h; do
+        if [ ! -f "${w}/linux/${h}" ]; then
+          mkdir -p "$(dirname "${w}/linux/${h}")"
+        elif cmp -s "${h}" "${w}/linux/${h}"; then
+          continue
+        fi
+        cp -f "${h}" "${w}/linux/${h}"
+        echo "${h}"
       done) >"${w}/headers.txt"
   # config/<series>/patches/*.patch: fixes to in-tree drivers so they build
   # against Synology's tree. One that does not apply (a platform whose
@@ -383,13 +391,24 @@ build_intree() {
     fi
     [ "${pass}" -ge 8 ] && die "${t}: in-tree build still fails after ${pass} passes, see ${log}"
     python3 -I "${ROOT}/scripts/prune.py" "${w}/linux" "${log}" "${w}/baseline.config" "${w}/linux/.config" \
-      >"${w}/prune-${pass}.txt" || {
-        cat "${w}/prune-${pass}.txt" >&2
-        die "${t}: an official module does not compile (OFFICIAL lines above), see ${log}"
-      }
+      >"${w}/prune-${pass}.txt"
     [ -s "${w}/prune-${pass}.txt" ] || { grep -m5 -E 'error|Error' "${log}" >&2; die "${t}: build failed and nothing to prune, see ${log}"; }
-    log "${t}: turning off $(cut -f1 "${w}/prune-${pass}.txt" | tr '\n' ' ')"
-    config_off "${t}" "${w}" "${series}" "${w}/prune-${pass}.txt"
+    # An official module that does not compile here (a source newer than
+    # the official kernel, against its headers): its symbol is Synology's,
+    # so it is taken out of its Makefile instead, unless it is one we ship.
+    local obj err mod
+    while IFS=$'\t' read -r _ obj err; do
+      mod="$(basename "${obj}" .o)"
+      grep -qx "${mod}" "${ROOT}/config/${series}/official.list" \
+        && die "${t}: ${mod} (official, in official.list) does not compile: ${err}"
+      sed -i -E "/^\s*obj-/ s#([[:space:]=])$(basename "${obj}")([[:space:]]|\$)#\1\2#" "${w}/linux/$(dirname "${obj}")/Makefile"
+      printf '%s\t%s\t%s\n' "(official ${mod})" "${obj}" "${err}; not rebuilt, DSM's own is used" >>"${w}/pruned.txt"
+    done < <(grep '^OFFICIAL' "${w}/prune-${pass}.txt" || true)
+    grep -v '^OFFICIAL' "${w}/prune-${pass}.txt" >"${w}/prune-${pass}.ours" || true
+    log "${t}: turning off $(cut -f1 "${w}/prune-${pass}.ours" | tr '\n' ' ')$(grep -c '^OFFICIAL' "${w}/prune-${pass}.txt" || true) official module(s) skipped"
+    if [ -s "${w}/prune-${pass}.ours" ]; then
+      config_off "${t}" "${w}" "${series}" "${w}/prune-${pass}.ours"
+    fi
     pass=$((pass + 1))
   done
 }
@@ -421,7 +440,7 @@ build_one_oot() {
   local t="$1" w="$2" series="$3" name="$4"
   local s="${ROOT}/src/${name}" d="${w}/oot/${name}" rc=0
   # module.conf variables
-  local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 SUBDIR="." MAKE_ARGS="" PROVIDES="" KERNEL_FILES=""
+  local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 SUBDIR="." MAKE_ARGS="" KERNEL_FILES=""
   local BUILD="kbuild"
   unset -f oot_prepare 2>/dev/null || true
   # shellcheck source=/dev/null
@@ -477,6 +496,8 @@ build_one_oot() {
   kos="$(find "${d}" -name '*.ko' -printf '%f ' | sed 's/\.ko / /g')"
   if [ "${rc}" -ne 0 ] || [ -z "${kos}" ]; then
     echo "${name}: FAILED (rc ${rc}), see logs/oot-${name}.log: $(grep -m3 -E 'error:|Error [0-9]' "${w}/logs/oot-${name}.log" | tr '\n' ' ')" >>"${w}/oot-report.txt"
+    # nothing of a half-built source ships (ice's auxiliary.ko without ice)
+    find "${d}" -name '*.ko' -delete
     return 1
   fi
   echo "${name}: ${kos}" >>"${w}/oot-report.txt"
@@ -510,7 +531,7 @@ report() {
     echo "## configuration"
     cat "${w}/config-report.txt"
     echo
-    echo "## headers that differ between the official kernel (toolkit) and the source: $(wc -l <"${w}/headers.txt")"
+    echo "## headers replaced by the official kernel's (toolkit) version: $(wc -l <"${w}/headers.txt")"
     head -40 "${w}/headers.txt"
     echo
     echo "## kernel source patches"

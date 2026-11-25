@@ -77,8 +77,12 @@ python3, make, gcc (host tools), patch, kmod.
    n → m is what the fragment is for; n → y is allowed only for symbols in
    `config/<series>/abi-allow.list`; anything else (a builtin turned module,
    a bool that changes a struct the official kernel shares) fails the build.
-   Before that, `config/<series>/patches/*.patch` are applied to the source
-   (fixes that let an in-tree driver build against Synology's tree).
+   Before that, every header of the source that differs from the official
+   kernel's (the toolkit's `build/include`, `build/arch/x86/include`) is
+   replaced by the official one, so modules see the official structs even
+   where the source is a newer or another platform's (see platforms.conf),
+   and `config/<series>/patches/*.patch` are applied (fixes that let an
+   in-tree driver build against Synology's tree).
    Bools the official kernel has off that something in the fragment selects
    (on some platforms NET_DEVLINK, PAGE_POOL, DIMLIB, IRQ_POLL, or the
    HDMI/SYNC_FILE a DRM driver needs) are not an error: what selects them is
@@ -92,7 +96,11 @@ python3, make, gcc (host tools), patch, kmod.
    each failed object to the symbol the fragment added for it, the build
    turns that symbol (and whatever of ours selects it) off and runs again,
    incrementally, until the tree builds. The report lists every symbol
-   turned off with the first compiler error.
+   turned off with the first compiler error. An official module that does
+   not compile (only seen where the source is newer than the official
+   kernel, against the official headers) cannot be turned off, its symbol is
+   Synology's: it is taken out of its Makefile instead and DSM's own copy is
+   the one that loads (unless official.list names it, which fails the build).
 5. **Out-of-tree modules**: every `src/<name>/` whose `SERIES` matches,
    built against the same tree.
 6. **Collect** (`scripts/collect.py`): what ships is every module the
