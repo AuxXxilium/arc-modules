@@ -127,6 +127,29 @@ fetch() { # fetch <url> <dest> <key>
   verify "${dest}" "${key}"
 }
 
+# fetch_git <url> <commit> <dir>: a repository at one commit (the pin). A
+# private one needs a token in ARC_GITHUB_TOKEN or AUX_TOKEN; it reaches git
+# through the environment, never a command line or a log.
+fetch_git() {
+  local url="$1" commit="$2" dir="$3" token="${ARC_GITHUB_TOKEN:-${AUX_TOKEN:-}}"
+  if [ -d "${dir}/.git" ] && [ "$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" = "${commit}" ]; then
+    return 0
+  fi
+  log "fetch ${url} at ${commit}"
+  rm -rf "${dir}.part"; mkdir -p "${dir}.part"
+  git -C "${dir}.part" init -q
+  if [ -n "${token}" ]; then
+    GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+      GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${token}" | base64 -w0)" \
+      GIT_TERMINAL_PROMPT=0 git -C "${dir}.part" fetch -q --depth 1 "${url}" "${commit}"
+  else
+    GIT_TERMINAL_PROMPT=0 git -C "${dir}.part" fetch -q --depth 1 "${url}" "${commit}"
+  fi || { rm -rf "${dir}.part"; warn "cannot fetch ${url} at ${commit} (a private repository needs ARC_GITHUB_TOKEN)"; return 1; }
+  git -C "${dir}.part" -c advice.detachedHead=false checkout -q FETCH_HEAD
+  [ "$(git -C "${dir}.part" rev-parse HEAD)" = "${commit}" ] || { warn "${url}: got $(git -C "${dir}.part" rev-parse HEAD), not ${commit}"; rm -rf "${dir}.part"; return 1; }
+  rm -rf "${dir}"; mv "${dir}.part" "${dir}"
+}
+
 urlenc() { # spaces and parentheses, as Synology's folders need
   printf '%s' "$1" | sed 's/ /%20/g; s/(/%28/g; s/)/%29/g'
 }
@@ -441,15 +464,28 @@ build_one_oot() {
   local s="${ROOT}/src/${name}" d="${w}/oot/${name}" rc=0
   # module.conf variables
   local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 SUBDIR="." MAKE_ARGS="" KERNEL_FILES=""
-  local BUILD="kbuild"
+  local GIT_URL="" GIT_COMMIT="" BACKPORT_DEFCONFIG="" UNLESS_OFFICIAL="" BUILD="kbuild"
   unset -f oot_prepare 2>/dev/null || true
   # shellcheck source=/dev/null
   . "${s}/module.conf"
   [ -f "${s}/module-${series}.conf" ] && . "${s}/module-${series}.conf"
   [[ " ${SERIES} " == *" ${series} "* ]] || return 0
+  local sym
+  for sym in ${UNLESS_OFFICIAL}; do
+    if grep -qE "^${sym}=[ym]" "${w}/baseline.config"; then
+      echo "${name}: skipped, the official kernel has ${sym} (its own drivers stay)" >>"${w}/oot-report.txt"
+      return 0
+    fi
+  done
 
   rm -rf "${d}"; mkdir -p "${d}"
-  if [ -n "${FETCH_URL}" ]; then
+  if [ -n "${GIT_URL}" ]; then
+    if ! fetch_git "${GIT_URL}" "${GIT_COMMIT}" "${CACHE_DIR}/git/${name}-${GIT_COMMIT}"; then
+      echo "${name}: FAILED, cannot fetch ${GIT_URL} at ${GIT_COMMIT} (private: needs ARC_GITHUB_TOKEN)" >>"${w}/oot-report.txt"
+      return 1
+    fi
+    git -C "${CACHE_DIR}/git/${name}-${GIT_COMMIT}" archive HEAD | tar -x -C "${d}"
+  elif [ -n "${FETCH_URL}" ]; then
     local key="oot/${FETCH_KEY:-$(basename "${FETCH_URL}")}"
     fetch "${FETCH_URL}" "${CACHE_DIR}/${key}" "${key}"
     tar -xaf "${CACHE_DIR}/${key}" -C "${d}" --strip-components="${FETCH_STRIP}"
@@ -484,6 +520,17 @@ build_one_oot() {
         make -C "${d}/${SUBDIR}" -j"${JOBS}" KSRC="${w}/linux" KOBJ="${w}/linux" \
           BUILD_KERNEL="$(cat "${w}/release")" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
           CC="${CROSS}gcc" LD="${CROSS}ld" KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} \
+          >>"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
+        ;;
+      backport)
+        # A Linux backports tree (Kconfig of its own, CPTCFG_ symbols): its
+        # defconfig against this tree's .config, then its own make.
+        (cd "${d}/${SUBDIR}" &&
+          make KLIB_BUILD="${w}/linux" KLIB="${w}/linux" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
+            "${BACKPORT_DEFCONFIG}" &&
+          grep -E '^CPTCFG_[A-Z0-9_]+=m' .config &&
+          make -j"${JOBS}" KLIB_BUILD="${w}/linux" KLIB="${w}/linux" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
+            KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} modules) \
           >>"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
         ;;
       *)
@@ -618,7 +665,7 @@ main() {
     done
     [ "${hit}" -eq 1 ] || die "no target matches ${a} (run $0 without arguments for the list)"
   done
-  for cmd in curl tar xz python3 make gcc patch modinfo; do
+  for cmd in curl tar xz python3 make gcc patch git; do
     command -v "${cmd}" >/dev/null || die "${cmd} is required"
   done
   mkdir -p "${CACHE_DIR}" "${WORK_DIR}" "${OUT_DIR}"

@@ -2,6 +2,9 @@
 # arc loads them before DSM's own module tree is there. Derived from what the
 # prebuilt packages carried (modules/<target>/ on the dev branch). A name a
 # platform's kernel does not have, or has built in, is simply skipped.
+# Not here: drm, drm_kms_helper, drm_panel_orientation_quirks, i915. Only
+# geminilakenk has them officially, and there DSM's own load (a rebuild
+# would clash with DSM's i915); elsewhere src/drm-backport ships its own.
 acpi-cpufreq
 adt7475
 asm116xfwdl
@@ -22,9 +25,6 @@ cpufreq_performance
 cpufreq_powersave
 crc-ccitt
 crc-itu-t
-drm
-drm_kms_helper
-drm_panel_orientation_quirks
 eeprom_93cx6
 ehci-hcd
 ehci-pci
@@ -36,7 +36,6 @@ ftdi_sio
 fuse
 hwmon-vid
 i2c-algo-bit
-i915
 ib_cm
 ib_core
 ib_mthca

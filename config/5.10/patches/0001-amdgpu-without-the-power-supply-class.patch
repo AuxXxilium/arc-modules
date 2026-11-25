@@ -1,0 +1,50 @@
+amdgpu: build without the power-supply class
+
+The official 5.10 kernels have POWER_SUPPLY off (a core bool: it cannot
+be turned on without changing vmlinux), and DRM_AMDGPU selects it. amdgpu
+only asks it whether the system is on AC; without the class it is taken to
+be on AC (the stub would say -ENOSYS, read as "on battery").
+
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_acpi.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_acpi.c
+@@ -744,7 +744,7 @@
+ 	struct acpi_bus_event *entry = (struct acpi_bus_event *)data;
+ 
+ 	if (strcmp(entry->device_class, ACPI_AC_CLASS) == 0) {
+-		if (power_supply_is_system_supplied() > 0)
++		if ((IS_ENABLED(CONFIG_POWER_SUPPLY) ? power_supply_is_system_supplied() > 0 : 1))
+ 			DRM_DEBUG_DRIVER("pm: AC\n");
+ 		else
+ 			DRM_DEBUG_DRIVER("pm: DC\n");
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_device.c
+@@ -3256,7 +3256,7 @@
+ 	INIT_WORK(&adev->xgmi_reset_work, amdgpu_device_xgmi_reset_func);
+ 
+ 	adev->gfx.gfx_off_req_count = 1;
+-	adev->pm.ac_power = power_supply_is_system_supplied() > 0;
++	adev->pm.ac_power = (IS_ENABLED(CONFIG_POWER_SUPPLY) ? power_supply_is_system_supplied() > 0 : 1);
+ 
+ 	atomic_set(&adev->throttling_logging_enabled, 1);
+ 	/*
+--- a/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
++++ b/drivers/gpu/drm/amd/pm/amdgpu_dpm.c
+@@ -1270,7 +1270,7 @@
+ {
+ 	if (adev->pm.dpm_enabled) {
+ 		mutex_lock(&adev->pm.mutex);
+-		if (power_supply_is_system_supplied() > 0)
++		if ((IS_ENABLED(CONFIG_POWER_SUPPLY) ? power_supply_is_system_supplied() > 0 : 1))
+ 			adev->pm.ac_power = true;
+ 		else
+ 			adev->pm.ac_power = false;
+--- a/drivers/gpu/drm/Kconfig
++++ b/drivers/gpu/drm/Kconfig
+@@ -263,7 +263,6 @@
+ 	select DRM_KMS_HELPER
+ 	select DRM_SCHED
+ 	select DRM_TTM
+-	select POWER_SUPPLY
+ 	select HWMON
+ 	select BACKLIGHT_CLASS_DEVICE
+ 	select INTERVAL_TREE

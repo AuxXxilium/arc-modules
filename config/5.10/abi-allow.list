@@ -78,3 +78,10 @@ CONFIG_MMC_SDHCI_IO_ACCESSORS
 CONFIG_MLX4_*
 CONFIG_IGB_HWMON
 CONFIG_SYNO_NET_EMULEX_HIDE_VF
+
+# amdgpu on geminilakenk (in-tree, on DSM's own drm.ko): bools inside ttm.ko
+# and amdgpu.ko, both shipped from this build. Not DRM_* in general: drm.ko
+# itself is DSM's there.
+CONFIG_DRM_TTM_DMA_PAGE_POOL
+CONFIG_DRM_AMD_*
+CONFIG_DRM_AMDGPU_*

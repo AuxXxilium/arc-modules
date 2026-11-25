@@ -56,7 +56,7 @@ Output, per target:
 
 A target needs about 5 GB in the work folder while it builds; it is removed
 afterwards unless `--keep` is given. Requirements: bash, curl, tar, xz,
-python3, make, gcc (host tools), patch, kmod.
+python3, make, gcc (host tools), patch, git.
 
 ## How a target is built
 
@@ -130,6 +130,38 @@ Not loaded on a running DSM yet: the build proves vermagic, symbol
 resolution and the official struct layout (headers), not behaviour.
 The other targets are untested but go through the same steps.
 
+## GPU (i915, amdgpu)
+
+* **5.10, all but geminilakenk**: the official kernels have no DRM and are
+  built without DMA_SHARED_BUFFER, SYNC_FILE and HDMI, so the kernel's own
+  drm.ko cannot load there. `src/drm-backport` builds the owner's
+  linux-backport tree (Intel's i915 backports MT_65_24.1.19_PSB_240119.1,
+  i915 of DII d8b384342b641, plus amdgpu from 6.5), the way the prebuilt
+  i915 was made: dmabuf.ko carries dma-buf, dma-fence and sync_file as a
+  module, i915-compat.ko the backport's compat layer, then drm,
+  drm_kms_helper, ttm, drm_buddy, drm_display_helper, gpu-sched, i915,
+  amdgpu (headless: no display core) and mei for i915's HuC/GSC. The
+  official vmlinux has none of these types, so the backport's own
+  definitions change nothing it shares; the symbol check proves nothing
+  of it needs vmlinux code the official kernel lacks. amdgpu asks the
+  power-supply class (off in these kernels) only whether the system is on
+  AC; without the class it is treated as on AC.
+* **geminilakenk**: DRM, DMA_SHARED_BUFFER and i915 are official there and
+  DSM loads its own i915. The backport is not built (its drm.ko would sit
+  under DSM's i915); drm, drm_kms_helper and i915 are not rebuilt either.
+  amdgpu is built in-tree (`config/5.10/geminilakenk.config`, display core
+  off) on DSM's own drm.ko, with ttm, gpu-sched and the ttm helper.
+* **4.4**: only apollolake and geminilake had i915 in the prebuilt set, and
+  there DRM and i915 are official; the official i915/drm are rebuilt from
+  the same GPL source and official .config and ship through official.list,
+  as before. The other 4.4 kernels have no DRM; the backport targets 5.10
+  and is not built for 4.4.
+
+The linux-backport repository is private: the build fetches it at the
+pinned commit with a GitHub token from `ARC_GITHUB_TOKEN` (or `AUX_TOKEN`),
+handed to git through the environment only. Without a token that one
+source fails and the rest of the target still builds.
+
 ## What does not come from source (yet)
 
 **epyc7003ntb-7.4-5.10.55** is skipped: Synology publishes no kernel source
@@ -140,11 +172,6 @@ one.
 Compared with the prebuilt packages (`modules/<target>/` on the dev
 branch), these are not built here, and why:
 
-* **GPU on 5.10** (drm, i915, i915-compat, dmabuf, amdgpu, ttm, ...): the
-  official 5.10 kernels other than geminilakenk are built without
-  DMA_SHARED_BUFFER, HDMI and SYNC_FILE, bools drm needs in vmlinux. The
-  prebuilt set used a backport that carries its own dma-buf; that is not
-  ported. geminilakenk's own i915 is official and DSM ships it.
 * **Core bools the prebuilt set had turned into modules**: power_supply,
   devlink, page_pool, dimlib, regmap-mmio, intel_idle, cpufreq_governor,
   efifb/vesafb, ... They change structs the official kernel shares; the
@@ -201,7 +228,9 @@ Each `src/<name>/module.conf` is a shell fragment:
 | `FETCH_URL`, `FETCH_KEY` | a pinned download instead of vendored files (`FETCH_KEY` names it in the cache, its sha256 is in `checksums.sha256`); `FETCH_STRIP` components are stripped (default 1) |
 | `SUBDIR` | the folder (inside the source) that holds the Kbuild Makefile |
 | `MAKE_ARGS` | extra make arguments, usually `CONFIG_<DRIVER>=m` |
-| `BUILD` | `kbuild` (default: `make M=`) or `intel` (Intel's own `common.mk`, which generates `kcompat_generated_defs.h` from the kernel headers first) |
+| `GIT_URL`, `GIT_COMMIT` | a repository fetched at one commit (the pin); a private one needs `ARC_GITHUB_TOKEN` |
+| `BUILD` | `kbuild` (default: `make M=`), `intel` (Intel's own `common.mk`, which generates `kcompat_generated_defs.h` from the kernel headers first) or `backport` (a Linux backports tree: `make BACKPORT_DEFCONFIG`, then `make modules`) |
+| `UNLESS_OFFICIAL` | symbols; the source is skipped where the official kernel sets one of them |
 | `KERNEL_FILES` | files copied from the target's kernel source (a renamed in-tree driver) |
 | `oot_prepare()` | optional shell function run in the copied source before make |
 
@@ -209,6 +238,7 @@ Kinds of sources here:
 
 * vendor drivers, vendored: Realtek r8125/r8126/r8127/r8152/r8168/r8169
   (from dsm_linux_fix), Broadcom mpt3sas and mpi3mr, HP hpsa (4.4),
+* GPU: drm-backport (pinned commit of a private repository, see GPU above),
 * vendor drivers, pinned downloads: Intel igb/ixgbe/ixgbevf/i40e/iavf/ice
   (newest release on 5.10, the last one that builds on 4.4), Aquantia
   atlantic, WireGuard and exFAT for 4.4, igc for 4.4, Coral gasket/apex for
