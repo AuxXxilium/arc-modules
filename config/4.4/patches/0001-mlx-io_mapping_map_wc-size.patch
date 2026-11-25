@@ -1,0 +1,29 @@
+mlx4/mlx5: pass the size to io_mapping_map_wc()
+
+Synology's 4.4 carries the 4.6 io_mapping_map_wc(mapping, offset, size);
+the 4.4 mlx4/mlx5 drivers still call the two-argument form.
+
+diff -ru pa/drivers/net/ethernet/mellanox/mlx4/pd.c pb/drivers/net/ethernet/mellanox/mlx4/pd.c
+--- a/drivers/net/ethernet/mellanox/mlx4/pd.c
++++ b/drivers/net/ethernet/mellanox/mlx4/pd.c
+@@ -205,7 +205,7 @@
+ 			goto free_uar;
+ 		}
+ 
+-		uar->bf_map = io_mapping_map_wc(priv->bf_mapping, uar->index << PAGE_SHIFT);
++		uar->bf_map = io_mapping_map_wc(priv->bf_mapping, uar->index << PAGE_SHIFT, PAGE_SIZE);
+ 		if (!uar->bf_map) {
+ 			err = -ENOMEM;
+ 			goto unamp_uar;
+diff -ru pa/drivers/net/ethernet/mellanox/mlx5/core/uar.c pb/drivers/net/ethernet/mellanox/mlx5/core/uar.c
+--- a/drivers/net/ethernet/mellanox/mlx5/core/uar.c
++++ b/drivers/net/ethernet/mellanox/mlx5/core/uar.c
+@@ -249,7 +249,7 @@
+ 
+ 	if (mdev->priv.bf_mapping)
+ 		uar->bf_map = io_mapping_map_wc(mdev->priv.bf_mapping,
+-						uar->index << PAGE_SHIFT);
++						uar->index << PAGE_SHIFT, PAGE_SIZE);
+ 
+ 	return 0;
+ 

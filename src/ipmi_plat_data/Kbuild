@@ -1,0 +1,2 @@
+obj-m += ipmi_plat_data.o ipmi_dmi.o
+ccflags-y += -I$(srctree)/drivers/char/ipmi

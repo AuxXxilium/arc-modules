@@ -1,0 +1,2 @@
+obj-m += blk-mq-virtio.o
+ccflags-y += -I$(srctree)/block

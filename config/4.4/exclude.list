@@ -1,0 +1,4 @@
+# Modules never shipped.
+# i40evf: the 4.4 kernel's VF driver; Intel's iavf (src/iavf) replaces it and
+# binds the same devices.
+i40evf

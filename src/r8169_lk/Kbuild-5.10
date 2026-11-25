@@ -1,0 +1,2 @@
+obj-m += r8169_lk.o
+r8169_lk-y := r8169_main.o r8169_firmware.o r8169_phy_config.o

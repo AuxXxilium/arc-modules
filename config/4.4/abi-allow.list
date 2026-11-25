@@ -1,0 +1,60 @@
+# Symbols that may go from n to y in our configuration although the official
+# kernel has them off (shell patterns, one per line). Only menu gates that
+# make drivers visible, and bools whose code lives inside a module we build.
+# Everything else that changes is an ABI change and fails the build.
+CONFIG_NET_VENDOR_*
+CONFIG_FUSION
+CONFIG_MEGARAID_NEWGEN
+CONFIG_STAGING
+CONFIG_TCP_CONG_ADVANCED
+CONFIG_INPUT_MISC
+CONFIG_SND_PCI
+CONFIG_SND_USB
+CONFIG_SND_DRIVERS
+CONFIG_USB_NET_DRIVERS
+
+# Bools whose code sits inside modules this build ships (their structs are
+# private to those modules, or shared only between modules we ship together).
+CONFIG_8139TOO_PIO
+CONFIG_AIC94XX_DEBUG
+CONFIG_B44_PCI*
+CONFIG_BE2NET_*
+CONFIG_BNX2X_SRIOV
+CONFIG_BNXT_SRIOV
+CONFIG_IXGBE_HWMON
+CONFIG_MLX4_*
+CONFIG_MLX5_*
+CONFIG_QLCNIC_*
+CONFIG_SCSI_MVSAS_DEBUG
+CONFIG_SCSI_SYM53C8XX_MMIO
+CONFIG_SCSI_SAS_HOST_SMP
+CONFIG_SFC_*
+CONFIG_SND_HDA_I915
+CONFIG_SND_JACK
+CONFIG_SND_VMASTER
+CONFIG_SND_SOC_AC97_BUS
+CONFIG_BLK_DEV_IDE*
+CONFIG_IDE_*
+CONFIG_MMC_BLOCK_BOUNCE
+CONFIG_SSB_DRIVER_PCICORE
+CONFIG_SSB_SDIOHOST_POSSIBLE
+CONFIG_VIRTIO_PCI_LEGACY
+CONFIG_INFINIBAND_*
+CONFIG_SYNO_IT87_*
+CONFIG_FONT_8x16
+CONFIG_FONT_8x8
+CONFIG_FRAMEBUFFER_CONSOLE_DETECT_PRIMARY
+
+# Bools whose code is in vmlinux only and that change no struct a module
+# sees. The official vmlinux is not rebuilt, so they change nothing there; a
+# module that needs their code either finds it in one of the src/ helper
+# modules (check_signature, textsearch, hvc_console, blk-mq-virtio,
+# ipmi_plat_data, pldmfw) or fails the symbol check and is dropped.
+CONFIG_DEFAULT_CUBIC
+CONFIG_MMC_RICOH_MMC
+CONFIG_XZ_DEC_*
+CONFIG_TEXTSEARCH
+CONFIG_HVC_DRIVER
+CONFIG_HPET_EMULATE_RTC
+CONFIG_VT_HW_CONSOLE_BINDING
+CONFIG_SCSI_NETLINK
