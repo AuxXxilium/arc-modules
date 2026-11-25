@@ -565,6 +565,10 @@ pack() {
 build_target() {
   local t="$1" w="${WORK_DIR}/${1}" dst="${OUT_DIR}/modules/${1}"
   log "=== ${t}"
+  if [ "${T_GPL[${t}]}" = "none" ]; then
+    warn "${t}: skipped, Synology publishes no kernel source that matches it (see platforms.conf)"
+    return 0
+  fi
   fetch_inputs "${t}"
   [ "${FETCH_ONLY}" -eq 1 ] && return 0
   local oldpath="${PATH}"

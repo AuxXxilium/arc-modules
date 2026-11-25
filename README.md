@@ -112,7 +112,30 @@ python3, make, gcc (host tools), patch, kmod.
    another shipped module; a module that does not is dropped and listed in
    the report with the symbols it lacks.
 
+## Verified (2026-11-25, build host)
+
+Built and compared (`-r` with the dev branch's `modules/`) for these
+targets; every shipped module carries the official vermagic and resolves
+all its symbols:
+
+| target | shipped | prebuilt | both | notes |
+|---|---|---|---|---|
+| apollolake-7.2-4.4.302 | 450 | 408 | 379 | 5 drivers turned off (snd-soc, realtek HDA, pmbus, xprtrdma), 6 dropped |
+| r1000-7.4-4.4.302 | 438 | 374 | 338 | also the phylib drivers (r1000's phy.h is newer than its drivers), DRM |
+| epyc7002-7.4-5.10.55 | 485 | 449 | 393 | nothing turned off, 2 dropped (kvm-intel, rtc-cmos) |
+| geminilakenk-7.2-5.10.55 | 469 | 457 | 382 | 7.3 source + 7.2 headers; devlink/page_pool/irq_poll users off |
+| v1000nk-7.2-5.10.55 | 471 | 442 | 376 | 7.3 source + 7.2 headers; no IRQ_POLL, so no mpt3sas/megaraid_sas |
+
+Not loaded on a running DSM yet: the build proves vermagic, symbol
+resolution and the official struct layout (headers), not behaviour.
+The other targets are untested but go through the same steps.
+
 ## What does not come from source (yet)
+
+**epyc7003ntb-7.4-5.10.55** is skipped: Synology publishes no kernel source
+for it, and epyc7003's differs from its official kernel in 131 headers (its
+asm-offsets do not compile against them). Its package stays the prebuilt
+one.
 
 Compared with the prebuilt packages (`modules/<target>/` on the dev
 branch), these are not built here, and why:
