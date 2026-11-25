@@ -96,11 +96,12 @@ def main():
     if sys.argv[1] == '--selectors':
         # prune.py --selectors <linux> <baseline> <current> SYM...: the
         # selectors we added that keep SYM on, as "SYM2<TAB>-<TAB>selects SYM"
+        # (build.sh adds why SYM must stay off)
         linux, base, cur = sys.argv[2], load_cfg(sys.argv[3]), load_cfg(sys.argv[4])
         for sym in sys.argv[5:]:
             for s in selectors(linux, sym):
                 if cur.get(s, 'n') != 'n' and base.get(s, 'n') == 'n':
-                    print(f'{s}\t-\tselects {sym}, which does not compile')
+                    print(f'{s}\t-\tselects {sym}')
         return 0
     linux, log, baseline, current = sys.argv[1:5]
     base, cur = load_cfg(baseline), load_cfg(current)

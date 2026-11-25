@@ -285,42 +285,83 @@ configure_tree() {
 }
 
 finish_config() {
-  local t="$1" w="$2" series="$3" cfg="${w}/linux/.config"
-  log "${t}: olddefconfig"
-  "${KMAKE[@]}" olddefconfig >"${w}/logs/config.log" 2>&1 \
-    || { tail -20 "${w}/logs/config.log" >&2; die "${t}: olddefconfig failed"; }
-  python3 -I "${ROOT}/scripts/configcheck.py" "${w}/official.config" "${w}/baseline.config" "${cfg}" \
-    "${w}/requested.config" "${ROOT}/config/${series}/abi-allow.list" >"${w}/config-report.txt" \
-    || { cat "${w}/config-report.txt" >&2; die "${t}: the configuration changes the official kernel's ABI (see above)"; }
+  local t="$1" w="$2" series="$3" cfg="${w}/linux/.config" round=0
+  while :; do
+    olddefconfig "${t}" "${w}"
+    if python3 -I "${ROOT}/scripts/configcheck.py" "${w}/official.config" "${w}/baseline.config" "${cfg}" \
+        "${w}/requested.config" "${ROOT}/config/${series}/abi-allow.list" "${w}/offenders.txt" \
+        >"${w}/config-report.txt"; then
+      return 0
+    fi
+    # Bools the official kernel has off that something we added selects
+    # (NET_DEVLINK, PAGE_POOL, ... on some platforms): turn off what selects
+    # them. Any other ABI change is an error in the fragment.
+    round=$((round + 1))
+    if [ ! -s "${w}/offenders.txt" ] || [ "${round}" -gt 5 ]; then
+      cat "${w}/config-report.txt" >&2
+      die "${t}: the configuration changes the official kernel's ABI (see above)"
+    fi
+    # shellcheck disable=SC2046
+    python3 -I "${ROOT}/scripts/prune.py" --selectors "${w}/linux" "${w}/baseline.config" "${cfg}" \
+      $(cat "${w}/offenders.txt") | sort -u -t$'\t' -k1,1 \
+      | sed 's/$/, which the official kernel has off/' >"${w}/offenders.sel"
+    # the bools themselves too: Synology gives some of them a prompt
+    # (NET_DEVLINK, PAGE_POOL), and a prompted bool keeps the y it was
+    # selected to after its selectors are gone
+    sed 's/$/\t-\tthe official kernel has this bool off/' "${w}/offenders.txt" >>"${w}/offenders.sel"
+    log "${t}: turning off $(cut -f1 "${w}/offenders.sel" | tr '\n' ' ')(the official kernel has these bools, or what they select, off)"
+    turn_off "${t}" "${w}" "${w}/offenders.sel"
+  done
 }
 
-# Turn symbols off again (a driver that does not compile here).
-config_off() { # config_off <target> <work> <series> <file with SYM\tobject\terror lines>
-  local t="$1" w="$2" series="$3" list="$4" sym obj err cfg="${w}/linux/.config"
+olddefconfig() { # olddefconfig <target> <work>
+  "${KMAKE[@]}" olddefconfig >"${2}/logs/config.log" 2>&1 \
+    || { tail -20 "${2}/logs/config.log" >&2; die "${1}: olddefconfig failed"; }
+}
+
+# off_lines <work> <file of "SYM<tab>object<tab>reason"> [reason suffix]: set them n
+off_lines() {
+  local w="$1" list="$2" suffix="${3:-}" sym obj err cfg="${w}/linux/.config"
   while IFS=$'\t' read -r sym obj err; do
     sed -i "/^${sym}=/d; /^# ${sym} is not set/d" "${cfg}" "${w}/requested.config"
     echo "# ${sym} is not set" >>"${cfg}"
-    printf '%s\t%s\t%s\n' "${sym}" "${obj}" "${err}" >>"${w}/pruned.txt"
+    printf '%s\t%s\t%s\n' "${sym}" "${obj}" "${err}${suffix}" >>"${w}/pruned.txt"
   done <"${list}"
-  finish_config "${t}" "${w}" "${series}"
-  # A symbol another enabled one selects comes straight back on: turn its
-  # selectors off too.
-  local still round=0
+}
+
+# turn_off <target> <work> <list> [reason suffix]: set the symbols of the
+# list n. One that another enabled symbol selects comes straight back on;
+# turn its selectors off too, as far down as it goes.
+turn_off() {
+  local t="$1" w="$2" list="$3" suffix="${4:-}" cfg="${w}/linux/.config" still round=0 sym
+  off_lines "${w}" "${list}" "${suffix}"
+  olddefconfig "${t}" "${w}"
+  cut -f1 "${list}" >"${list}.want"
   while :; do
-    still="$(cut -f1 "${list}" | while read -r sym; do grep -q "^${sym}=" "${cfg}" && echo "${sym}"; done)"
+    still="$(while read -r sym; do grep -q "^${sym}=" "${cfg}" && echo "${sym}"; done <"${list}.want" || true)"
     [ -z "${still}" ] && break
     round=$((round + 1))
-    [ "${round}" -gt 5 ] && die "${t}: cannot turn off ${still}"
+    [ "${round}" -gt 8 ] && die "${t}: cannot turn off ${still}"
     # shellcheck disable=SC2086
-    python3 -I "${ROOT}/scripts/prune.py" --selectors "${w}/linux" "${w}/baseline.config" "${cfg}" ${still} >"${list}.sel"
+    python3 -I "${ROOT}/scripts/prune.py" --selectors "${w}/linux" "${w}/baseline.config" "${cfg}" ${still} \
+      | sort -u -t$'\t' -k1,1 >"${list}.sel"
     [ -s "${list}.sel" ] || die "${t}: ${still} stays on and nothing we added selects it"
-    while IFS=$'\t' read -r sym obj err; do
-      sed -i "/^${sym}=/d; /^# ${sym} is not set/d" "${cfg}" "${w}/requested.config"
+    off_lines "${w}" "${list}.sel"
+    # and the symbols themselves once more: a prompted bool (Synology's
+    # NET_DEVLINK) keeps the y a selector gave it after the selector is off
+    for sym in ${still}; do
+      sed -i "/^${sym}=/d; /^# ${sym} is not set/d" "${cfg}"
       echo "# ${sym} is not set" >>"${cfg}"
-      printf '%s\t%s\t%s\n' "${sym}" "${obj}" "${err}" >>"${w}/pruned.txt"
-    done <"${list}.sel"
-    finish_config "${t}" "${w}" "${series}"
+    done
+    olddefconfig "${t}" "${w}"
   done
+}
+
+# Turn symbols off again (a driver that does not compile here).
+config_off() { # config_off <target> <work> <series> <file of "SYM<tab>object<tab>error">
+  local t="$1" w="$2" series="$3" list="$4"
+  turn_off "${t}" "${w}" "${list}"
+  finish_config "${t}" "${w}" "${series}"
 }
 
 ###############################################################################

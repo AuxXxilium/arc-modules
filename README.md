@@ -79,6 +79,11 @@ python3, make, gcc (host tools), patch, kmod.
    a bool that changes a struct the official kernel shares) fails the build.
    Before that, `config/<series>/patches/*.patch` are applied to the source
    (fixes that let an in-tree driver build against Synology's tree).
+   Bools the official kernel has off that something in the fragment selects
+   (on some platforms NET_DEVLINK, PAGE_POOL, DIMLIB, IRQ_POLL, or the
+   HDMI/SYNC_FILE a DRM driver needs) are not an error: what selects them is
+   turned off and listed in the report, so a driver the official kernel
+   cannot carry is left out instead of changing the kernel's ABI.
 3. **Release**: `LOCALVERSION` makes the tree's release the official one
    (`4.4.302+`, `5.10.55+`), so every module gets the official vermagic.
 4. **In-tree modules**: `make -k modules` in the configured tree (vmlinux is
@@ -98,6 +103,42 @@ python3, make, gcc (host tools), patch, kmod.
    every undefined symbol from vmlinux (the toolkit's `Module.symvers`) or
    another shipped module; a module that does not is dropped and listed in
    the report with the symbols it lacks.
+
+## What does not come from source (yet)
+
+Compared with the prebuilt packages (`modules/<target>/` on the dev
+branch), these are not built here, and why:
+
+* **GPU on 5.10** (drm, i915, i915-compat, dmabuf, amdgpu, ttm, ...): the
+  official 5.10 kernels other than geminilakenk are built without
+  DMA_SHARED_BUFFER, HDMI and SYNC_FILE, bools drm needs in vmlinux. The
+  prebuilt set used a backport that carries its own dma-buf; that is not
+  ported. geminilakenk's own i915 is official and DSM ships it.
+* **Core bools the prebuilt set had turned into modules**: power_supply,
+  devlink, page_pool, dimlib, regmap-mmio, intel_idle, cpufreq_governor,
+  efifb/vesafb, ... They change structs the official kernel shares; the
+  drivers that need them (typec/tcpm, gpio-charger; on some platforms mlx4/5,
+  bnxt, ice, qed, megaraid_sas, mpt3sas) are turned off there and listed.
+  Small helpers that change no struct are built (check_signature, textsearch,
+  hvc_console, blk-mq-virtio, ipmi_plat_data, pldmfw, sdhci-pci-data).
+* **Needs vmlinux code the official kernel lacks**: kvm-intel on 5.10
+  (l1tf_mitigation, asm_exc_nmi_noist), rtc-cmos (HPET RTC emulation),
+  fbcon on 4.4 (VT_HW_CONSOLE_BINDING), sata_sil on 4.4 (Synology's libata
+  hooks), scsi_transport_fc/libfc on 4.4 (SCSI_NETLINK), nf_socket/tproxy on
+  5.10 (udp4_lib_lookup).
+* **Does not compile against Synology's 4.4 tree**: snd-soc-*, the realtek
+  HDA codec, pmbus (Synology hooks missing), mpi3mr and smartpqi (need
+  blk-mq-pci, 4.9+).
+* **No source here**: yt6801 (Motorcomm), aic_load_fw (AIC8800 USB
+  firmware loader), aqc111 for 4.4, binder/ashmem (Android), mlx_compat and
+  the Mellanox OFED/Marvell FastLinQ vendor stacks (qed/qede 8.59, qedr):
+  the in-tree drivers are built instead. atkbd, i8042 and pcspkr are DSM's
+  own where the platform has them.
+* **Older or other versions than prebuilt**: Realtek r8125 9.016.01 (prebuilt
+  9.018.00), r8126 10.017.00 (10.018.00), r8168 8.056.02 (8.057.00), r8152
+  2.21.4 (2.22.1) are the newest the dsm_linux_fix tree carries; atlantic is
+  GitHub's AQtion 2.5.5 (prebuilt 2.5.12 from Marvell's site); e1000e, bnxt_en,
+  megaraid_sas, qed/qede on 4.4 are the kernel's own.
 
 ## Layout
 

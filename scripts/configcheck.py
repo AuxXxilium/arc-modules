@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check a configured kernel tree against the official kernel's .config.
 
-configcheck.py <official.config> <baseline.config> <final.config> <requested.config> <abi-allow.list>
+configcheck.py <official.config> <baseline.config> <final.config> <requested.config> <abi-allow.list> [offenders]
 
 official  the dev toolkit's build/.config (what Synology built)
 baseline  official run through this source's Kconfig (olddefconfig)
@@ -15,7 +15,10 @@ official kernel and its own modules share, and fails the build unless the
 symbol matches a pattern in abi-allow.list (menu gates such as
 CONFIG_NET_VENDOR_*, and bools that only change code inside a module).
 
-Exit 1 when the final tree is not safe to build modules from.
+Exit 1 when the final tree is not safe to build modules from. With
+[offenders], the symbols that went n -> y without being requested (selected
+by something we added) are written there, one per line: build.sh turns off
+what selects them and checks again.
 """
 import fnmatch
 import re
@@ -53,7 +56,7 @@ def main():
     get = lambda c, s: c.get(s, 'n')
 
     drift = sorted(s for s in set(official) | set(baseline) if get(official, s) != get(baseline, s))
-    added, gates, errors, notes = [], [], [], []
+    added, gates, errors, notes, offenders = [], [], [], [], []
     for s in sorted(set(baseline) | set(final)):
         a, b = get(baseline, s), get(final, s)
         if a == b:
@@ -69,6 +72,8 @@ def main():
             notes.append(f'{s}: {a} -> {b}')
         else:
             errors.append(f'{s}: {a} -> {b}' + ('' if s in requested else '  (not requested: selected or defaulted)'))
+            if a == 'n' and b == 'y' and s not in requested:
+                offenders.append(s)
 
     missed = []
     for s, v in sorted(requested.items()):
@@ -87,6 +92,9 @@ def main():
         print(f'requested but not taken by Kconfig ({len(missed)}):')
         for m in missed:
             print(f'  {m}')
+    if len(sys.argv) > 6:
+        with open(sys.argv[6], 'w') as f:
+            f.write(''.join(o + '\n' for o in offenders) if len(offenders) == len(errors) else '')
     if errors:
         print(f'ABI changes NOT allowed ({len(errors)}):')
         for e in errors:
