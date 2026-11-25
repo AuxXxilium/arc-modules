@@ -110,16 +110,45 @@ def selectors(linux, sym):
     return out
 
 
+def depends_of(linux, sym):
+    """Symbols named in the "depends on" lines of sym's own Kconfig entry."""
+    name = sym[len('CONFIG_'):]
+    ent = re.compile(r'^\s*(?:menu)?config\s+([A-Za-z0-9_]+)\s*$')
+    dep = re.compile(r'^\s*depends\s+on\s+(.*)$')
+    out = []
+    for d, _, files in os.walk(linux):
+        for f in files:
+            if not f.startswith('Kconfig'):
+                continue
+            cur = None
+            for line in open(os.path.join(d, f), errors='replace'):
+                m = ent.match(line)
+                if m:
+                    cur = m.group(1)
+                    continue
+                m = dep.match(line)
+                if cur == name and m:
+                    out += ['CONFIG_' + t for t in re.findall(r'[A-Z][A-Z0-9_]+', m.group(1))]
+    return out
+
+
 def main():
     if sys.argv[1] == '--selectors':
         # prune.py --selectors <linux> <baseline> <current> SYM...: the
         # selectors we added that keep SYM on, as "SYM2<TAB>-<TAB>selects SYM"
         # (build.sh adds why SYM must stay off)
         linux, base, cur = sys.argv[2], load_cfg(sys.argv[3]), load_cfg(sys.argv[4])
+        ours = lambda s: cur.get(s, 'n') != 'n' and base.get(s, 'n') == 'n'
         for sym in sys.argv[5:]:
-            for s in selectors(linux, sym):
-                if cur.get(s, 'n') != 'n' and base.get(s, 'n') == 'n':
-                    print(f'{s}\t-\tselects {sym}')
+            found = [s for s in selectors(linux, sym) if ours(s)]
+            for s in found:
+                print(f'{s}\t-\tselects {sym}')
+            if not found:
+                # a promptless bool that defaults to y once what it depends
+                # on is there (USB_ETRON_HUB under USB_ETRON_HCD): that
+                for s in depends_of(linux, sym):
+                    if ours(s):
+                        print(f'{s}\t-\tturns on {sym} (default y)')
         return 0
     linux, log, baseline, current = sys.argv[1:5]
     base, cur = load_cfg(baseline), load_cfg(current)
