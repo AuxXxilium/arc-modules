@@ -112,23 +112,73 @@ python3, make, gcc (host tools), patch, git.
    another shipped module; a module that does not is dropped and listed in
    the report with the symbols it lacks.
 
-## Verified (2026-11-25, build host)
+## Verified (2026-11-26, build host: `./build.sh --strict --tgz all`)
 
-Built and compared (`-r` with the dev branch's `modules/`) for these
-targets; every shipped module carries the official vermagic and resolves
-all its symbols:
+Every target of platforms.conf except epyc7003ntb (no source, see below)
+builds; `-r` compared each with the dev branch's `modules/<target>/`.
+"vermagic differs" counts modules both sets have whose vermagic is not
+the same (0 everywhere); "dropped" are built modules the symbol or
+vermagic check refused (every shipped one resolves all its symbols);
+"turned off" are symbols turned off because the driver does not compile
+here or needs a bool the official kernel has off (DRM on the 4.4
+platforms without it, NET_DEVLINK/IRQ_POLL on the nk 7.2 kernels, ...);
+"headers replaced" are source headers replaced by the official ones.
+`scripts/summary.py output/reports` prints this table.
 
-| target | shipped | prebuilt | both | notes |
-|---|---|---|---|---|
-| apollolake-7.2-4.4.302 | 450 | 408 | 379 | 5 drivers turned off (snd-soc, realtek HDA, pmbus, xprtrdma), 6 dropped |
-| r1000-7.4-4.4.302 | 438 | 374 | 338 | also the phylib drivers (r1000's phy.h is newer than its drivers), DRM |
-| epyc7002-7.4-5.10.55 | 485 | 449 | 393 | nothing turned off, 2 dropped (kvm-intel, rtc-cmos) |
-| geminilakenk-7.2-5.10.55 | 469 | 457 | 382 | 7.3 source + 7.2 headers; devlink/page_pool/irq_poll users off |
-| v1000nk-7.2-5.10.55 | 471 | 442 | 376 | 7.3 source + 7.2 headers; no IRQ_POLL, so no mpt3sas/megaraid_sas |
+| target | shipped | prebuilt | both | vermagic differs | dropped | turned off | oot failed | headers replaced |
+|---|---|---|---|---|---|---|---|---|
+| apollolake-7.2-4.4.302 | 450 | 408 | 379 | 0 | 6 | 5 | - | 1 |
+| apollolake-7.3-4.4.302 | 450 | 408 | 379 | 0 | 6 | 5 | - | 0 |
+| apollolake-7.4-4.4.302 | 450 | 408 | 379 | 0 | 6 | 5 | - | 0 |
+| broadwell-7.2-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 1 |
+| broadwell-7.3-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
+| broadwell-7.4-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
+| broadwellnk-7.2-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 1 |
+| broadwellnk-7.3-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
+| broadwellnk-7.4-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
+| broadwellnkv2-7.2-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 1 |
+| broadwellnkv2-7.3-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
+| broadwellnkv2-7.4-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
+| broadwellntbap-7.2-4.4.302 | 434 | 368 | 339 | 0 | 3 | 25 | - | 1 |
+| broadwellntbap-7.3-4.4.302 | 434 | 368 | 339 | 0 | 3 | 25 | - | 0 |
+| broadwellntbap-7.4-4.4.302 | 434 | 368 | 339 | 0 | 3 | 25 | - | 0 |
+| denverton-7.2-4.4.302 | 442 | 368 | 340 | 0 | 5 | 24 | - | 1 |
+| denverton-7.3-4.4.302 | 442 | 368 | 340 | 0 | 5 | 24 | - | 0 |
+| denverton-7.4-4.4.302 | 442 | 368 | 340 | 0 | 5 | 24 | - | 0 |
+| epyc7002-7.2-5.10.55 | 505 | 449 | 404 | 0 | 2 | 0 | - | 1 |
+| epyc7002-7.3-5.10.55 | 505 | 449 | 404 | 0 | 2 | 0 | - | 0 |
+| epyc7002-7.4-5.10.55 | 505 | 449 | 404 | 0 | 2 | 0 | - | 0 |
+| epyc7003-7.4-5.10.55 | 503 | 447 | 402 | 0 | 2 | 0 | - | 0 |
+| geminilake-7.2-4.4.302 | 448 | 406 | 378 | 0 | 6 | 5 | - | 1 |
+| geminilake-7.3-4.4.302 | 448 | 406 | 378 | 0 | 6 | 5 | - | 0 |
+| geminilake-7.4-4.4.302 | 448 | 406 | 378 | 0 | 6 | 5 | - | 0 |
+| geminilakenk-7.2-5.10.55 | 468 | 457 | 381 | 0 | 5 | 21 | ice ixgbe | 20 |
+| geminilakenk-7.3-5.10.55 | 468 | 457 | 381 | 0 | 5 | 17 | ice ixgbe | 0 |
+| geminilakenk-7.4-5.10.55 | 468 | 457 | 381 | 0 | 5 | 17 | ice ixgbe | 0 |
+| icelaked-7.4-5.10.55 | 498 | 439 | 394 | 0 | 2 | 1 | - | 0 |
+| purley-7.2-4.4.302 | 440 | 369 | 340 | 0 | 3 | 31 | - | 1 |
+| purley-7.3-4.4.302 | 440 | 369 | 340 | 0 | 3 | 31 | - | 0 |
+| purley-7.4-4.4.302 | 440 | 369 | 340 | 0 | 3 | 31 | - | 0 |
+| r1000-7.2-4.4.302 | 438 | 374 | 338 | 0 | 5 | 32 | - | 1 |
+| r1000-7.3-4.4.302 | 438 | 374 | 338 | 0 | 5 | 32 | - | 0 |
+| r1000-7.4-4.4.302 | 438 | 374 | 338 | 0 | 5 | 32 | - | 0 |
+| r1000nk-7.2-5.10.55 | 489 | 439 | 384 | 0 | 5 | 8 | - | 19 |
+| r1000nk-7.3-5.10.55 | 489 | 439 | 384 | 0 | 5 | 4 | - | 0 |
+| r1000nk-7.4-5.10.55 | 489 | 439 | 384 | 0 | 5 | 4 | - | 0 |
+| v1000-7.2-4.4.302 | 440 | 377 | 341 | 0 | 3 | 32 | - | 1 |
+| v1000-7.3-4.4.302 | 440 | 377 | 341 | 0 | 3 | 32 | - | 0 |
+| v1000-7.4-4.4.302 | 440 | 377 | 341 | 0 | 3 | 32 | - | 0 |
+| v1000nk-7.2-5.10.55 | 491 | 442 | 387 | 0 | 3 | 8 | - | 19 |
+| v1000nk-7.3-5.10.55 | 491 | 442 | 387 | 0 | 3 | 4 | - | 0 |
+| v1000nk-7.4-5.10.55 | 491 | 443 | 388 | 0 | 3 | 4 | - | 0 |
+
+GPU modules shipped: i915, i915-compat, dmabuf, drm, ttm, amdgpu on every
+5.10 target but geminilakenk (amdgpu and ttm there, on DSM's own drm and
+i915); the official i915 and drm on apollolake and geminilake (4.4), as in
+the prebuilt set. No other 4.4 kernel has DRM.
 
 Not loaded on a running DSM yet: the build proves vermagic, symbol
 resolution and the official struct layout (headers), not behaviour.
-The other targets are untested but go through the same steps.
 
 ## GPU (i915, amdgpu)
 
