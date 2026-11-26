@@ -1,0 +1,2 @@
+obj-m += i8042.o
+ccflags-y += -DCONFIG_SERIO_I8042_MODULE=1

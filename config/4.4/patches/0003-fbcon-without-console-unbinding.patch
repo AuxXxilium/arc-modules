@@ -1,0 +1,16 @@
+fbcon: build without VT_HW_CONSOLE_BINDING
+
+FRAMEBUFFER_CONSOLE selects VT_HW_CONSOLE_BINDING, which the official
+kernels have off: fbcon then needs do_unbind_con_driver(), vmlinux code
+they lack. fbcon only loses the ability to give the console back.
+
+--- a/drivers/video/console/Kconfig
++++ b/drivers/video/console/Kconfig
+@@ -73,7 +73,6 @@
+ config FRAMEBUFFER_CONSOLE
+ 	tristate "Framebuffer Console support"
+ 	depends on FB && !UML
+-	select VT_HW_CONSOLE_BINDING
+ 	select CRC32
+ 	select FONT_SUPPORT
+ 	help

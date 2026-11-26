@@ -23,6 +23,7 @@ OUT_DIR="${OUT_DIR:-${ROOT}/output}"
 TOOLKIT_DIR="${TOOLKIT_DIR:-/root/syno-compiler}"
 COMPARE_DIR="${COMPARE_DIR:-}"
 KEEP=0
+REUSE=0
 STRICT=0
 TGZ=0
 FETCH_ONLY=0
@@ -58,6 +59,7 @@ Options:
                   top of the in-tree modules; "none" skips them all
   --tgz           also pack DIR/<target>.tgz the way the release does
   --keep          keep the unpacked kernel tree of each target
+  --reuse         reuse a tree --keep left (only out-of-tree, checks, report)
   --strict        a source without a pinned checksum is an error
   --fetch-only    only download and verify the sources of the targets
   -h, --help      this text
@@ -434,6 +436,7 @@ build_intree() {
     fi
     pass=$((pass + 1))
   done
+  touch "${w}/intree.done"
 }
 
 # Out-of-tree sources: src/<name>/module.conf (see README). The sources are
@@ -464,13 +467,22 @@ build_one_oot() {
   local s="${ROOT}/src/${name}" d="${w}/oot/${name}" rc=0
   # module.conf variables
   local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 SUBDIR="." MAKE_ARGS="" KERNEL_FILES=""
-  local GIT_URL="" GIT_COMMIT="" BACKPORT_DEFCONFIG="" UNLESS_OFFICIAL="" BUILD="kbuild"
+  local GIT_URL="" GIT_COMMIT="" BACKPORT_DEFCONFIG="" UNLESS_OFFICIAL="" IF_OFFICIAL="" PLATFORMS="" FILES_FROM="" BUILD="kbuild"
   unset -f oot_prepare 2>/dev/null || true
   # shellcheck source=/dev/null
   . "${s}/module.conf"
   [ -f "${s}/module-${series}.conf" ] && . "${s}/module-${series}.conf"
   [[ " ${SERIES} " == *" ${series} "* ]] || return 0
+  if [ -n "${PLATFORMS}" ] && [[ " ${PLATFORMS} " != *" ${T_PLATFORM[${t}]} "* ]]; then
+    return 0
+  fi
   local sym
+  for sym in ${IF_OFFICIAL}; do
+    if ! grep -qE "^${sym}=[ym]" "${w}/baseline.config"; then
+      echo "${name}: skipped, the official kernel has no ${sym}" >>"${w}/oot-report.txt"
+      return 0
+    fi
+  done
   for sym in ${UNLESS_OFFICIAL}; do
     if grep -qE "^${sym}=[ym]" "${w}/baseline.config"; then
       echo "${name}: skipped, the official kernel has ${sym} (its own drivers stay)" >>"${w}/oot-report.txt"
@@ -489,15 +501,22 @@ build_one_oot() {
     local key="oot/${FETCH_KEY:-$(basename "${FETCH_URL}")}"
     fetch "${FETCH_URL}" "${CACHE_DIR}/${key}" "${key}"
     tar -xaf "${CACHE_DIR}/${key}" -C "${d}" --strip-components="${FETCH_STRIP}"
+  elif [ -n "${FILES_FROM}" ]; then
+    # another recipe's vendored files (src/<FILES_FROM>)
+    cp -a "${ROOT}/src/${FILES_FROM}/." "${d}/"
   elif [ -d "${s}/${series}" ]; then
     cp -a "${s}/${series}/." "${d}/"
   elif [ -d "${s}/files" ]; then
     cp -a "${s}/files/." "${d}/"
   fi
+  # A source may ship binaries (aic8800's carries ARM modules): only what
+  # is built here ships.
+  find "${d}" -name '*.ko' -delete
   # Files taken from the kernel source itself (a renamed in-tree driver).
   local f
+  # (shell patterns, relative to the kernel source)
   for f in ${KERNEL_FILES}; do
-    cp -a "${w}/linux/${f}" "${d}/"
+    (cd "${w}/linux" && cp -a ${f} "${d}/") || { echo "${name}: FAILED, ${f} is not in this kernel source" >>"${w}/oot-report.txt"; return 1; }
   done
   # patches/*.patch apply to every series, patches/<series>/*.patch to one.
   for f in "${s}"/patches/*.patch "${s}/patches/${series}"/*.patch; do
@@ -511,6 +530,9 @@ build_one_oot() {
     (cd "${d}" && OOT_KSRC="${w}/linux" OOT_SERIES="${series}" OOT_RELEASE="$(cat "${w}/release")" oot_prepare) \
       >"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
   fi
+  # @KSRC@ in MAKE_ARGS: the kernel tree (for Makefiles that probe its headers)
+  MAKE_ARGS="${MAKE_ARGS//@KSRC@/${w}/linux}"
+  MAKE_ARGS="${MAKE_ARGS//@RELEASE@/$(cat "${w}/release")}"
   if [ "${rc}" -eq 0 ]; then
     log "${t}: out-of-tree ${name}"
     case "${BUILD}" in
@@ -619,8 +641,19 @@ build_target() {
   fetch_inputs "${t}"
   [ "${FETCH_ONLY}" -eq 1 ] && return 0
   local oldpath="${PATH}"
-  prepare_tree "${t}" "${w}"
-  build_intree "${t}" "${w}"
+  if [ "${REUSE}" -eq 1 ] && [ -f "${w}/intree.done" ]; then
+    # --reuse: the tree a --keep run left, configured and built; only the
+    # out-of-tree sources, the checks and the report run again.
+    log "${t}: reusing ${w}"
+    export PATH="${w}/toolchain/bin:${PATH}"
+    local rel kv
+    rel="$(cat "${w}/release")"
+    kv="$(make -s -C "${w}/linux" kernelversion 2>/dev/null)"
+    KMAKE=(make -C "${w}/linux" ARCH=x86_64 CROSS_COMPILE="${CROSS}" LOCALVERSION="${rel#"${kv}"}")
+  else
+    prepare_tree "${t}" "${w}"
+    build_intree "${t}" "${w}"
+  fi
   build_oot "${t}" "${w}"
   collect "${t}" "${w}" "${dst}"
   report "${t}" "${w}" "${dst}"
@@ -643,6 +676,7 @@ main() {
       --oot) ONLY_OOT="$2"; shift 2 ;;
       --tgz) TGZ=1; shift ;;
       --keep) KEEP=1; shift ;;
+      --reuse) REUSE=1; KEEP=1; shift ;;
       --strict) STRICT=1; shift ;;
       --fetch-only) FETCH_ONLY=1; shift ;;
       -h|--help) usage; exit 0 ;;

@@ -1,0 +1,123 @@
+netfilter: TPROXY and socket matching without the udp lookup export
+
+udp4_lib_lookup() and udp6_lib_lookup() are exported only by a kernel
+(and an ipv6.ko) built with NF_SOCKET/NF_TPROXY, which the official ones
+are not. nf_socket and nf_tproxy get a local copy of the two-line
+wrapper around __udp[46]_lib_lookup(), which is always exported.
+
+--- a/net/ipv4/netfilter/nf_socket_ipv4.c
++++ b/net/ipv4/netfilter/nf_socket_ipv4.c
+@@ -16,6 +16,25 @@
+ #include <net/netfilter/nf_conntrack.h>
+ #endif
+ 
++/*
++ * arc-modules: udp4_lib_lookup() is exported only by a kernel built with
++ * NF_SOCKET_IPV4 or NF_TPROXY_IPV4, which the official kernels are not;
++ * __udp4_lib_lookup() and udp_table always are. Same body as udp.c's.
++ */
++static struct sock *arc_udp4_lib_lookup(struct net *net, __be32 saddr,
++					__be16 sport, __be32 daddr,
++					__be16 dport, int dif)
++{
++	struct sock *sk;
++
++	sk = __udp4_lib_lookup(net, saddr, sport, daddr, dport,
++			       dif, 0, &udp_table, NULL);
++	if (sk && !refcount_inc_not_zero(&sk->sk_refcnt))
++		sk = NULL;
++	return sk;
++}
++#define udp4_lib_lookup arc_udp4_lib_lookup
++
+ static int
+ extract_icmp4_fields(const struct sk_buff *skb, u8 *protocol,
+ 		     __be32 *raddr, __be32 *laddr,
+--- a/net/ipv4/netfilter/nf_tproxy_ipv4.c
++++ b/net/ipv4/netfilter/nf_tproxy_ipv4.c
+@@ -15,6 +15,25 @@
+ #include <net/tcp.h>
+ #include <linux/inetdevice.h>
+ 
++/*
++ * arc-modules: udp4_lib_lookup() is exported only by a kernel built with
++ * NF_SOCKET_IPV4 or NF_TPROXY_IPV4, which the official kernels are not;
++ * __udp4_lib_lookup() and udp_table always are. Same body as udp.c's.
++ */
++static struct sock *arc_udp4_lib_lookup(struct net *net, __be32 saddr,
++					__be16 sport, __be32 daddr,
++					__be16 dport, int dif)
++{
++	struct sock *sk;
++
++	sk = __udp4_lib_lookup(net, saddr, sport, daddr, dport,
++			       dif, 0, &udp_table, NULL);
++	if (sk && !refcount_inc_not_zero(&sk->sk_refcnt))
++		sk = NULL;
++	return sk;
++}
++#define udp4_lib_lookup arc_udp4_lib_lookup
++
+ struct sock *
+ nf_tproxy_handle_time_wait4(struct net *net, struct sk_buff *skb,
+ 			 __be32 laddr, __be16 lport, struct sock *sk)
+--- a/net/ipv6/netfilter/nf_socket_ipv6.c
++++ b/net/ipv6/netfilter/nf_socket_ipv6.c
+@@ -17,6 +17,27 @@
+ #include <net/netfilter/nf_conntrack.h>
+ #endif
+ 
++/*
++ * arc-modules: udp6_lib_lookup() is exported only by an ipv6 built with
++ * NF_SOCKET_IPV6 or NF_TPROXY_IPV6, which DSM's is not; __udp6_lib_lookup()
++ * and udp_table always are. Same body as net/ipv6/udp.c's.
++ */
++static struct sock *arc_udp6_lib_lookup(struct net *net,
++					const struct in6_addr *saddr,
++					__be16 sport,
++					const struct in6_addr *daddr,
++					__be16 dport, int dif)
++{
++	struct sock *sk;
++
++	sk = __udp6_lib_lookup(net, saddr, sport, daddr, dport,
++			       dif, 0, &udp_table, NULL);
++	if (sk && !refcount_inc_not_zero(&sk->sk_refcnt))
++		sk = NULL;
++	return sk;
++}
++#define udp6_lib_lookup arc_udp6_lib_lookup
++
+ static int
+ extract_icmp6_fields(const struct sk_buff *skb,
+ 		     unsigned int outside_hdrlen,
+--- a/net/ipv6/netfilter/nf_tproxy_ipv6.c
++++ b/net/ipv6/netfilter/nf_tproxy_ipv6.c
+@@ -6,6 +6,27 @@
+ #include <net/udp.h>
+ #include <net/tcp.h>
+ 
++/*
++ * arc-modules: udp6_lib_lookup() is exported only by an ipv6 built with
++ * NF_SOCKET_IPV6 or NF_TPROXY_IPV6, which DSM's is not; __udp6_lib_lookup()
++ * and udp_table always are. Same body as net/ipv6/udp.c's.
++ */
++static struct sock *arc_udp6_lib_lookup(struct net *net,
++					const struct in6_addr *saddr,
++					__be16 sport,
++					const struct in6_addr *daddr,
++					__be16 dport, int dif)
++{
++	struct sock *sk;
++
++	sk = __udp6_lib_lookup(net, saddr, sport, daddr, dport,
++			       dif, 0, &udp_table, NULL);
++	if (sk && !refcount_inc_not_zero(&sk->sk_refcnt))
++		sk = NULL;
++	return sk;
++}
++#define udp6_lib_lookup arc_udp6_lib_lookup
++
+ const struct in6_addr *
+ nf_tproxy_laddr6(struct sk_buff *skb, const struct in6_addr *user_laddr,
+ 	      const struct in6_addr *daddr)

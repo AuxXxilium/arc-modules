@@ -1,0 +1,1 @@
+obj-m += cpufreq_governor.o cpufreq_ondemand.o cpufreq_conservative.o

@@ -1,0 +1,18 @@
+rtc-cmos: no HPET RTC emulation for a modular rtc-cmos
+
+HPET_EMULATE_RTC turns on with a modular RTC_DRV_CMOS, and then rtc-cmos
+calls the HPET emulation hooks in vmlinux; the official kernels, built
+without RTC_DRV_CMOS, have none. Only a builtin rtc-cmos turns it on now,
+as in the official kernel, and the module uses plain CMOS interrupts.
+
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -777,7 +777,7 @@
+ 
+ config HPET_EMULATE_RTC
+ 	def_bool y
+-	depends on HPET_TIMER && (RTC=y || RTC=m || RTC_DRV_CMOS=m || RTC_DRV_CMOS=y)
++	depends on HPET_TIMER && (RTC=y || RTC=m || RTC_DRV_CMOS=y)
+ 
+ config APB_TIMER
+        def_bool y if X86_INTEL_MID
