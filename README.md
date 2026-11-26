@@ -58,11 +58,11 @@ Output, per target:
 
 A target needs about 5 GB in the work folder while it builds; it is removed
 afterwards unless `--keep` is given. Inside a target the out-of-tree sources
-build four at a time. On the 16-CPU build host `all` takes about 2.5 hours
-with 4 targets at once (about 8.5 minutes per target, 4 in parallel), where
-one at a time took about 6.5 minutes per target, about 5 hours; a target
-built either way is byte-identical. Requirements: bash, curl, tar, xz,
-python3, make, gcc (host tools), patch, git.
+build four at a time. On the 16-CPU build host, 4 targets at once built 29
+targets in 78 minutes (2.7 minutes per target); one at a time had taken
+6.7 minutes per 4.4 target and about 9 per 5.10 target. A target built
+either way is byte-identical. Requirements: bash, curl, tar, xz,
+python3, make, gcc (host tools), patch, git, flock.
 
 ## How a target is built
 
@@ -127,61 +127,62 @@ the same (0 everywhere); "dropped" are built modules the symbol or
 vermagic check refused (every shipped one resolves all its symbols);
 "turned off" are symbols turned off because the driver does not compile
 here or needs a bool the official kernel has off (DRM on the 4.4
-platforms without it, NET_DEVLINK/IRQ_POLL on the nk 7.2 kernels, ...);
-"headers replaced" are source headers replaced by the official ones.
-`scripts/summary.py output/reports` prints this table.
+platforms without it, NET_DEVLINK/IRQ_POLL on the nk 7.2 kernels,
+POWER_SUPPLY for typec, ...); "headers replaced" are source headers
+replaced by the official ones. `scripts/summary.py output/reports` prints
+this table.
 
 | target | shipped | prebuilt | both | vermagic differs | dropped | turned off | oot failed | headers replaced |
 |---|---|---|---|---|---|---|---|---|
-| apollolake-7.2-4.4.302 | 450 | 408 | 379 | 0 | 6 | 5 | - | 1 |
-| apollolake-7.3-4.4.302 | 450 | 408 | 379 | 0 | 6 | 5 | - | 0 |
-| apollolake-7.4-4.4.302 | 450 | 408 | 379 | 0 | 6 | 5 | - | 0 |
-| broadwell-7.2-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 1 |
-| broadwell-7.3-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
-| broadwell-7.4-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
-| broadwellnk-7.2-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 1 |
-| broadwellnk-7.3-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
-| broadwellnk-7.4-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
-| broadwellnkv2-7.2-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 1 |
-| broadwellnkv2-7.3-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
-| broadwellnkv2-7.4-4.4.302 | 433 | 365 | 336 | 0 | 3 | 25 | - | 0 |
-| broadwellntbap-7.2-4.4.302 | 434 | 368 | 339 | 0 | 3 | 25 | - | 1 |
-| broadwellntbap-7.3-4.4.302 | 434 | 368 | 339 | 0 | 3 | 25 | - | 0 |
-| broadwellntbap-7.4-4.4.302 | 434 | 368 | 339 | 0 | 3 | 25 | - | 0 |
-| denverton-7.2-4.4.302 | 442 | 368 | 340 | 0 | 5 | 24 | - | 1 |
-| denverton-7.3-4.4.302 | 442 | 368 | 340 | 0 | 5 | 24 | - | 0 |
-| denverton-7.4-4.4.302 | 442 | 368 | 340 | 0 | 5 | 24 | - | 0 |
-| epyc7002-7.2-5.10.55 | 505 | 449 | 404 | 0 | 2 | 0 | - | 1 |
-| epyc7002-7.3-5.10.55 | 505 | 449 | 404 | 0 | 2 | 0 | - | 0 |
-| epyc7002-7.4-5.10.55 | 505 | 449 | 404 | 0 | 2 | 0 | - | 0 |
-| epyc7003-7.4-5.10.55 | 503 | 447 | 402 | 0 | 2 | 0 | - | 0 |
-| geminilake-7.2-4.4.302 | 448 | 406 | 378 | 0 | 6 | 5 | - | 1 |
-| geminilake-7.3-4.4.302 | 448 | 406 | 378 | 0 | 6 | 5 | - | 0 |
-| geminilake-7.4-4.4.302 | 448 | 406 | 378 | 0 | 6 | 5 | - | 0 |
-| geminilakenk-7.2-5.10.55 | 468 | 457 | 381 | 0 | 5 | 21 | ice ixgbe | 20 |
-| geminilakenk-7.3-5.10.55 | 468 | 457 | 381 | 0 | 5 | 17 | ice ixgbe | 0 |
-| geminilakenk-7.4-5.10.55 | 468 | 457 | 381 | 0 | 5 | 17 | ice ixgbe | 0 |
-| icelaked-7.4-5.10.55 | 498 | 439 | 394 | 0 | 2 | 1 | - | 0 |
-| purley-7.2-4.4.302 | 440 | 369 | 340 | 0 | 3 | 31 | - | 1 |
-| purley-7.3-4.4.302 | 440 | 369 | 340 | 0 | 3 | 31 | - | 0 |
-| purley-7.4-4.4.302 | 440 | 369 | 340 | 0 | 3 | 31 | - | 0 |
-| r1000-7.2-4.4.302 | 438 | 374 | 338 | 0 | 5 | 32 | - | 1 |
-| r1000-7.3-4.4.302 | 438 | 374 | 338 | 0 | 5 | 32 | - | 0 |
-| r1000-7.4-4.4.302 | 438 | 374 | 338 | 0 | 5 | 32 | - | 0 |
-| r1000nk-7.2-5.10.55 | 489 | 439 | 384 | 0 | 5 | 8 | - | 19 |
-| r1000nk-7.3-5.10.55 | 489 | 439 | 384 | 0 | 5 | 4 | - | 0 |
-| r1000nk-7.4-5.10.55 | 489 | 439 | 384 | 0 | 5 | 4 | - | 0 |
-| v1000-7.2-4.4.302 | 440 | 377 | 341 | 0 | 3 | 32 | - | 1 |
-| v1000-7.3-4.4.302 | 440 | 377 | 341 | 0 | 3 | 32 | - | 0 |
-| v1000-7.4-4.4.302 | 440 | 377 | 341 | 0 | 3 | 32 | - | 0 |
-| v1000nk-7.2-5.10.55 | 491 | 442 | 387 | 0 | 3 | 8 | - | 19 |
-| v1000nk-7.3-5.10.55 | 491 | 442 | 387 | 0 | 3 | 4 | - | 0 |
-| v1000nk-7.4-5.10.55 | 491 | 443 | 388 | 0 | 3 | 4 | - | 0 |
+| apollolake-7.2-4.4.302 | 466 | 408 | 395 | 0 | 4 | 5 | - | 1 |
+| apollolake-7.3-4.4.302 | 466 | 408 | 395 | 0 | 4 | 5 | - | 0 |
+| apollolake-7.4-4.4.302 | 466 | 408 | 395 | 0 | 4 | 5 | - | 0 |
+| broadwell-7.2-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 1 |
+| broadwell-7.3-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
+| broadwell-7.4-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
+| broadwellnk-7.2-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 1 |
+| broadwellnk-7.3-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
+| broadwellnk-7.4-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
+| broadwellnkv2-7.2-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 1 |
+| broadwellnkv2-7.3-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
+| broadwellnkv2-7.4-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
+| broadwellntbap-7.2-4.4.302 | 444 | 368 | 349 | 0 | 2 | 29 | - | 1 |
+| broadwellntbap-7.3-4.4.302 | 444 | 368 | 349 | 0 | 2 | 29 | - | 0 |
+| broadwellntbap-7.4-4.4.302 | 444 | 368 | 349 | 0 | 2 | 29 | - | 0 |
+| denverton-7.2-4.4.302 | 455 | 368 | 353 | 0 | 4 | 27 | - | 1 |
+| denverton-7.3-4.4.302 | 455 | 368 | 353 | 0 | 4 | 27 | - | 0 |
+| denverton-7.4-4.4.302 | 455 | 368 | 353 | 0 | 4 | 27 | - | 0 |
+| epyc7002-7.2-5.10.55 | 520 | 449 | 418 | 0 | 1 | 4 | - | 1 |
+| epyc7002-7.3-5.10.55 | 520 | 449 | 418 | 0 | 1 | 4 | - | 0 |
+| epyc7002-7.4-5.10.55 | 520 | 449 | 418 | 0 | 1 | 4 | - | 0 |
+| epyc7003-7.4-5.10.55 | 518 | 447 | 416 | 0 | 1 | 4 | - | 0 |
+| geminilake-7.2-4.4.302 | 462 | 406 | 392 | 0 | 4 | 5 | - | 1 |
+| geminilake-7.3-4.4.302 | 462 | 406 | 392 | 0 | 4 | 5 | - | 0 |
+| geminilake-7.4-4.4.302 | 462 | 406 | 392 | 0 | 4 | 5 | - | 0 |
+| geminilakenk-7.2-5.10.55 | 487 | 457 | 399 | 0 | 3 | 28 | ice ixgbe | 20 |
+| geminilakenk-7.3-5.10.55 | 487 | 457 | 399 | 0 | 3 | 24 | ice ixgbe | 0 |
+| geminilakenk-7.4-5.10.55 | 487 | 457 | 399 | 0 | 3 | 24 | ice ixgbe | 0 |
+| icelaked-7.4-5.10.55 | 513 | 439 | 408 | 0 | 1 | 6 | - | 0 |
+| purley-7.2-4.4.302 | 450 | 369 | 350 | 0 | 2 | 31 | - | 1 |
+| purley-7.3-4.4.302 | 450 | 369 | 350 | 0 | 2 | 31 | - | 0 |
+| purley-7.4-4.4.302 | 450 | 369 | 350 | 0 | 2 | 31 | - | 0 |
+| r1000-7.2-4.4.302 | 449 | 374 | 349 | 0 | 3 | 35 | - | 1 |
+| r1000-7.3-4.4.302 | 449 | 374 | 349 | 0 | 3 | 35 | - | 0 |
+| r1000-7.4-4.4.302 | 449 | 374 | 349 | 0 | 3 | 35 | - | 0 |
+| r1000nk-7.2-5.10.55 | 505 | 439 | 399 | 0 | 3 | 12 | - | 19 |
+| r1000nk-7.3-5.10.55 | 505 | 439 | 399 | 0 | 3 | 8 | - | 0 |
+| r1000nk-7.4-5.10.55 | 505 | 439 | 399 | 0 | 3 | 8 | - | 0 |
+| v1000-7.2-4.4.302 | 451 | 377 | 352 | 0 | 1 | 35 | - | 1 |
+| v1000-7.3-4.4.302 | 451 | 377 | 352 | 0 | 1 | 35 | - | 0 |
+| v1000-7.4-4.4.302 | 451 | 377 | 352 | 0 | 1 | 35 | - | 0 |
+| v1000nk-7.2-5.10.55 | 507 | 442 | 402 | 0 | 1 | 12 | - | 19 |
+| v1000nk-7.3-5.10.55 | 507 | 442 | 402 | 0 | 1 | 8 | - | 0 |
+| v1000nk-7.4-5.10.55 | 507 | 443 | 403 | 0 | 1 | 8 | - | 0 |
 
 GPU modules shipped: i915, i915-compat, dmabuf, drm, ttm, amdgpu on every
-5.10 target but geminilakenk (amdgpu and ttm there, on DSM's own drm and
-i915); the official i915 and drm on apollolake and geminilake (4.4), as in
-the prebuilt set. No other 4.4 kernel has DRM.
+5.10 target but geminilakenk (amdgpu, ttm and bochs-drm there, on DSM's own
+drm and i915); the official i915 and drm on apollolake and geminilake (4.4),
+as in the prebuilt set. No other 4.4 kernel has DRM.
 
 Not loaded on a running DSM yet: the build proves vermagic, symbol
 resolution and the official struct layout (headers), not behaviour.
@@ -226,33 +227,32 @@ asm-offsets do not compile against them). Its package stays the prebuilt
 one.
 
 Compared with the prebuilt packages (`modules/<target>/` on the dev
-branch), these are not built here, and why:
+branch), these are still not built here, and why:
 
 * **Core bools the prebuilt set had turned into modules**: power_supply,
-  devlink, page_pool, dimlib, regmap-mmio, intel_idle, cpufreq_governor,
-  efifb/vesafb, ... They change structs the official kernel shares; the
-  drivers that need them (typec/tcpm, gpio-charger; on some platforms mlx4/5,
-  bnxt, ice, qed, megaraid_sas, mpt3sas) are turned off there and listed.
-  Small helpers that change no struct are built (check_signature, textsearch,
-  hvc_console, blk-mq-virtio, ipmi_plat_data, pldmfw, sdhci-pci-data).
-* **Needs vmlinux code the official kernel lacks**: kvm-intel on 5.10
-  (l1tf_mitigation, asm_exc_nmi_noist), rtc-cmos (HPET RTC emulation),
-  fbcon on 4.4 (VT_HW_CONSOLE_BINDING), sata_sil on 4.4 (Synology's libata
-  hooks), scsi_transport_fc/libfc on 4.4 (SCSI_NETLINK), nf_socket/tproxy on
-  5.10 (udp4_lib_lookup).
-* **Does not compile against Synology's 4.4 tree**: snd-soc-*, the realtek
-  HDA codec, pmbus (Synology hooks missing), mpi3mr and smartpqi (need
-  blk-mq-pci, 4.9+).
-* **No source here**: yt6801 (Motorcomm), aic_load_fw (AIC8800 USB
-  firmware loader), aqc111 for 4.4, binder/ashmem (Android), mlx_compat and
-  the Mellanox OFED/Marvell FastLinQ vendor stacks (qed/qede 8.59, qedr):
-  the in-tree drivers are built instead. atkbd, i8042 and pcspkr are DSM's
-  own where the platform has them.
-* **Older or other versions than prebuilt**: Realtek r8125 9.016.01 (prebuilt
-  9.018.00), r8126 10.017.00 (10.018.00), r8168 8.056.02 (8.057.00), r8152
-  2.21.4 (2.22.1) are the newest the dsm_linux_fix tree carries; atlantic is
-  GitHub's AQtion 2.5.5 (prebuilt 2.5.12 from Marvell's site); e1000e, bnxt_en,
-  megaraid_sas, qed/qede on 4.4 are the kernel's own.
+  devlink, page_pool, dimlib, regmap-mmio, cpufreq_governor on 5.10, ... They
+  change structs the official kernel shares. What needs them is turned off
+  and listed: typec/tcpm/fusb302, gpio-charger, pwm-fan (POWER_SUPPLY,
+  REGULATOR, PWM); on geminilakenk mlx4/5, mlxsw, bnxt, ice, ixgbe, qed,
+  hinic (NET_DEVLINK, DIMLIB), megaraid_sas (IRQ_POLL), virtio-gpu and udl
+  (DRM_GEM_SHMEM_HELPER, part of DSM's drm.ko).
+* **Needs vmlinux code the official kernel lacks**: kvm-intel on the AMD
+  5.10 platforms (l1tf_mitigation, asm_exc_nmi_noist), sata_sil on 4.4
+  (Synology's libata hooks), scsi_transport_fc/libfc on 4.4 (SCSI_NETLINK),
+  cpufreq ondemand/conservative on 5.10 (cpufreq_this_cpu_can_update),
+  ashmem and binder on 5.10 (kallsyms_lookup_name, shmem_zero_setup).
+* **Does not compile against Synology's tree**: on 4.4 snd-soc-*, the realtek
+  HDA codec, pmbus (Synology hooks missing), the phylib PHY drivers on r1000
+  (its phy.h is newer than its drivers); mpi3mr needs blk-mq-pci (4.9+).
+* **No source found, or none that builds here**: atlantic 2.5.12 (Marvell's
+  site only; GitHub's AQtion is 2.5.5), megaraid_sas 07.7xx (the kernels'
+  own 06.808 and 07.714 are built), the Mellanox OFED 4.1 stack with
+  mlx_compat (the kernels' own mlx4/mlx5 are built), QLogic FastLinQ 8.59
+  (8.70.12 is public but needs 4.11+ and another devlink API; the kernels'
+  own qed/qede are built), qedr on 4.4, the BMC drivers (kcs_bmc, bt-bmc:
+  ASPEED/Nuvoton SoCs only).
+* **Older than prebuilt on 4.4**: r8126 10.017.00, r8152 2.21.4 and r8168
+  8.056.02 (dsm_linux_fix's copies; the newer releases do not build on 4.4).
 
 ## Layout
 
