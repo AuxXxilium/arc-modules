@@ -25,7 +25,7 @@ On a Linux x86_64 host (the build host: `/root/arc-modules-src/repo`):
 ./build.sh                          # list the targets
 ./build.sh apollolake-7.2-4.4.302   # one target
 ./build.sh 'epyc7002-*'             # a pattern (quote it)
-./build.sh '*-7.4-*' -j 8 --tgz     # all DSM 7.4 targets, plus the .tgz packages
+./build.sh '*-7.4-*' --tgz          # all DSM 7.4 targets, plus the .tgz packages
 ./build.sh all                      # every target
 ```
 
@@ -33,7 +33,8 @@ Options:
 
 | option | meaning |
 |---|---|
-| `-j N` | make parallelism (default 8) |
+| `-j N` | make jobs per target (default: the CPUs divided by `-P`) |
+| `-P N` | targets built at once (default: 1 for one target, else the CPUs / 4); each has its own work folder and log (`output/logs/<target>.log`), downloads run first and under a lock |
 | `-o DIR` | output (default `./output`) |
 | `-c DIR` | download cache (default `./cache`) |
 | `-w DIR` | work folder for the unpacked trees (default `./work`) |
@@ -42,6 +43,7 @@ Options:
 | `--oot a,b` | build only these out-of-tree sources (`none` for none) |
 | `--tgz` | also write `output/<target>.tgz` as the release does (flat `.ko` + `VERSION`) |
 | `--keep` | keep the unpacked kernel tree of each target in the work folder |
+| `--reuse` | reuse the tree a `--keep` run left: only the out-of-tree sources, the checks and the report run again (for working on a recipe) |
 | `--strict` | a download without a pinned checksum is an error |
 | `--fetch-only` | only download and verify the sources |
 
@@ -55,7 +57,11 @@ Output, per target:
 * `output/logs/<target>/`: the build logs.
 
 A target needs about 5 GB in the work folder while it builds; it is removed
-afterwards unless `--keep` is given. Requirements: bash, curl, tar, xz,
+afterwards unless `--keep` is given. Inside a target the out-of-tree sources
+build four at a time. On the 16-CPU build host `all` takes about 2.5 hours
+with 4 targets at once (about 8.5 minutes per target, 4 in parallel), where
+one at a time took about 6.5 minutes per target, about 5 hours; a target
+built either way is byte-identical. Requirements: bash, curl, tar, xz,
 python3, make, gcc (host tools), patch, git.
 
 ## How a target is built
@@ -277,27 +283,38 @@ Each `src/<name>/module.conf` is a shell fragment:
 | `SERIES` | kernel series it builds for (`"4.4 5.10"`) |
 | `FETCH_URL`, `FETCH_KEY` | a pinned download instead of vendored files (`FETCH_KEY` names it in the cache, its sha256 is in `checksums.sha256`); `FETCH_STRIP` components are stripped (default 1) |
 | `SUBDIR` | the folder (inside the source) that holds the Kbuild Makefile |
-| `MAKE_ARGS` | extra make arguments, usually `CONFIG_<DRIVER>=m` |
+| `MAKE_ARGS` | extra make arguments, usually `CONFIG_<DRIVER>=m` or a driver's own options; `@KSRC@` and `@RELEASE@` become the kernel tree and release |
 | `GIT_URL`, `GIT_COMMIT` | a repository fetched at one commit (the pin); a private one needs `ARC_GITHUB_TOKEN` |
 | `BUILD` | `kbuild` (default: `make M=`), `intel` (Intel's own `common.mk`, which generates `kcompat_generated_defs.h` from the kernel headers first) or `backport` (a Linux backports tree: `make BACKPORT_DEFCONFIG`, then `make modules`) |
 | `UNLESS_OFFICIAL` | symbols; the source is skipped where the official kernel sets one of them |
-| `KERNEL_FILES` | files copied from the target's kernel source (a renamed in-tree driver) |
+| `IF_OFFICIAL` | symbols; the source is skipped where the official kernel lacks one of them |
+| `PLATFORMS` | build only for these platforms |
+| `FILES_FROM` | use another recipe's vendored folder (`src/<FILES_FROM>`) |
+| `KERNEL_FILES` | files (shell patterns) copied from the target's kernel source (a renamed in-tree driver, a helper) |
 | `oot_prepare()` | optional shell function run in the copied source before make |
 
 Kinds of sources here:
 
-* vendor drivers, vendored: Realtek r8125/r8126/r8127/r8152/r8168/r8169
-  (from dsm_linux_fix), Broadcom mpt3sas and mpi3mr, HP hpsa (4.4),
+* vendor drivers, vendored: Realtek r8127/r8169 and, for 4.4, r8126/r8152/
+  r8168 (from dsm_linux_fix), Broadcom mpt3sas (46.00 for 4.4 and the 5.10
+  kernels without IRQ_POLL, 55.00 elsewhere) and bnxt_en 1.8.54 (4.4), HP
+  hpsa (4.4),
 * GPU: drm-backport (pinned commit of a private repository, see GPU above),
 * vendor drivers, pinned downloads: Intel igb/ixgbe/ixgbevf/i40e/iavf/ice
-  (newest release on 5.10, the last one that builds on 4.4), Aquantia
-  atlantic, WireGuard and exFAT for 4.4, igc for 4.4, Coral gasket/apex for
-  4.4, acpi_call, tty0tty, WCH ch35x_38x,
+  (newest release on 5.10, the last one that builds on 4.4) and e1000e
+  3.8.7 (4.4), Realtek r8125 9.018.00 and, on 5.10, r8126 10.018.00, r8152
+  2.22.1, r8168 8.057.00, Microchip smartpqi 2.1.42-011, Broadcom mpi3mr
+  8.19.1 (5.10), Motorcomm yt6801, Aquantia atlantic and aqc111 (4.4),
+  WireGuard and exFAT for 4.4, igc for 4.4, Coral gasket/apex for 4.4,
+  ashmem/binder (4.4), AIC8800 aic_load_fw, acpi_call, tty0tty, WCH
+  ch35x_38x,
 * kernel drivers built under another name: r8169_lk (the kernel's r8169
   next to Realtek's),
 * kernel helpers the official vmlinux leaves out (their bool is off), built
   as modules from the target's own source: check_signature, textsearch,
-  hvc_console, blk-mq-virtio, ipmi_plat_data/ipmi_dmi, pldmfw.
+  hvc_console, blk-mq-virtio, ipmi_plat_data/ipmi_dmi, pldmfw,
+  sdhci-pci-data, intel_idle, i8042, atkbd, cpufreq ondemand/conservative
+  with their common code (4.4), efifb/vesafb (apollolake, geminilake).
 
 Vendored files live in `src/<name>/files/` (every series) or
 `src/<name>/<series>/` (one series). `src/<name>/module-<series>.conf`,

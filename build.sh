@@ -14,7 +14,9 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Defaults, all overridable by options or the environment.
-JOBS="${JOBS:-8}"
+JOBS="${JOBS:-}"
+PARALLEL="${PARALLEL:-}"
+NPROC="$(nproc 2>/dev/null || echo 4)"
 CACHE_DIR="${CACHE_DIR:-${ROOT}/cache}"
 WORK_DIR="${WORK_DIR:-${ROOT}/work}"
 OUT_DIR="${OUT_DIR:-${ROOT}/output}"
@@ -45,7 +47,10 @@ pattern over them (quote it): 'apollolake-*', '*-7.4-*', '*-5.10.55', all.
 Without a target, the list of targets is printed.
 
 Options:
-  -j N            make parallelism (default ${JOBS})
+  -j N            make parallelism per target (default: the CPUs divided
+                  by the targets built at once)
+  -P N            targets built at once (default: one for a single target,
+                  else the CPUs / 4, at least 1)
   -o DIR          output folder (default ${OUT_DIR}); modules land in
                   DIR/modules/<target>/, reports in DIR/reports/
   -c DIR          download cache (default ${CACHE_DIR})
@@ -118,14 +123,28 @@ verify() { # verify <file> <key>
 }
 declare -A VERIFIED
 
+# Targets built at once share the cache: a download (or a checkout) runs
+# under one lock, so two targets never write the same file.
+cache_lock() {
+  mkdir -p "${CACHE_DIR}"
+  exec {CACHE_LOCK_FD}>"${CACHE_DIR}/.lock"
+  flock "${CACHE_LOCK_FD}"
+}
+cache_unlock() {
+  flock -u "${CACHE_LOCK_FD}"
+  exec {CACHE_LOCK_FD}>&-
+}
+
 fetch() { # fetch <url> <dest> <key>
   local url="$1" dest="$2" key="$3"
+  cache_lock
   if [ ! -s "${dest}" ]; then
     mkdir -p "$(dirname "${dest}")"
     log "download ${url}"
     curl -fL --retry 3 --connect-timeout 30 -o "${dest}.part" "${url}" || { rm -f "${dest}.part"; die "download failed: ${url}"; }
     mv -f "${dest}.part" "${dest}"
   fi
+  cache_unlock
   verify "${dest}" "${key}"
 }
 
@@ -133,6 +152,14 @@ fetch() { # fetch <url> <dest> <key>
 # private one needs a token in ARC_GITHUB_TOKEN or AUX_TOKEN; it reaches git
 # through the environment, never a command line or a log.
 fetch_git() {
+  local url="$1" commit="$2" dir="$3"
+  cache_lock
+  fetch_git_locked "${url}" "${commit}" "${dir}"
+  local rc=$?
+  cache_unlock
+  return "${rc}"
+}
+fetch_git_locked() {
   local url="$1" commit="$2" dir="$3" token="${ARC_GITHUB_TOKEN:-${AUX_TOKEN:-}}"
   if [ -d "${dir}/.git" ] && [ "$(git -C "${dir}" rev-parse HEAD 2>/dev/null)" = "${commit}" ]; then
     return 0
@@ -449,21 +476,36 @@ oot_names() {
   done
 }
 
+# The sources are independent of each other: OOT_PARALLEL of them build at
+# once, each into its own folder, log and report line.
 build_oot() {
   local t="$1" w="$2" series name
   series="$(series_of "${T_KVER[${t}]}")"
   : >"${w}/oot-report.txt"
+  rm -rf "${w}/oot-report.d"; mkdir -p "${w}/oot-report.d"
+  local names=()
   for name in $(oot_names); do
     if [ -n "${ONLY_OOT}" ]; then
       [ "${ONLY_OOT}" = "none" ] && return 0
       [[ ",${ONLY_OOT}," == *",${name},"* ]] || continue
     fi
-    build_one_oot "${t}" "${w}" "${series}" "${name}" || true
+    names+=("${name}")
   done
+  local n=0
+  for name in "${names[@]}"; do
+    while [ "$(jobs -rp | wc -l)" -ge "${OOT_PARALLEL}" ]; do wait -n || true; done
+    ( build_one_oot "${t}" "${w}" "${series}" "${name}" "${w}/oot-report.d/${name}" || true ) &
+    n=$((n + 1))
+  done
+  wait || true
+  for name in "${names[@]}"; do
+    [ -f "${w}/oot-report.d/${name}" ] && cat "${w}/oot-report.d/${name}" >>"${w}/oot-report.txt"
+  done
+  return 0
 }
 
 build_one_oot() {
-  local t="$1" w="$2" series="$3" name="$4"
+  local t="$1" w="$2" series="$3" name="$4" rep="$5"
   local s="${ROOT}/src/${name}" d="${w}/oot/${name}" rc=0
   # module.conf variables
   local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 SUBDIR="." MAKE_ARGS="" KERNEL_FILES=""
@@ -479,13 +521,13 @@ build_one_oot() {
   local sym
   for sym in ${IF_OFFICIAL}; do
     if ! grep -qE "^${sym}=[ym]" "${w}/baseline.config"; then
-      echo "${name}: skipped, the official kernel has no ${sym}" >>"${w}/oot-report.txt"
+      echo "${name}: skipped, the official kernel has no ${sym}" >>"${rep}"
       return 0
     fi
   done
   for sym in ${UNLESS_OFFICIAL}; do
     if grep -qE "^${sym}=[ym]" "${w}/baseline.config"; then
-      echo "${name}: skipped, the official kernel has ${sym} (its own drivers stay)" >>"${w}/oot-report.txt"
+      echo "${name}: skipped, the official kernel has ${sym} (its own drivers stay)" >>"${rep}"
       return 0
     fi
   done
@@ -493,9 +535,10 @@ build_one_oot() {
   rm -rf "${d}"; mkdir -p "${d}"
   if [ -n "${GIT_URL}" ]; then
     if ! fetch_git "${GIT_URL}" "${GIT_COMMIT}" "${CACHE_DIR}/git/${name}-${GIT_COMMIT}"; then
-      echo "${name}: FAILED, cannot fetch ${GIT_URL} at ${GIT_COMMIT} (private: needs ARC_GITHUB_TOKEN)" >>"${w}/oot-report.txt"
+      echo "${name}: FAILED, cannot fetch ${GIT_URL} at ${GIT_COMMIT} (private: needs ARC_GITHUB_TOKEN)" >>"${rep}"
       return 1
     fi
+    # git archive only reads the checkout: no lock needed
     git -C "${CACHE_DIR}/git/${name}-${GIT_COMMIT}" archive HEAD | tar -x -C "${d}"
   elif [ -n "${FETCH_URL}" ]; then
     local key="oot/${FETCH_KEY:-$(basename "${FETCH_URL}")}"
@@ -516,12 +559,12 @@ build_one_oot() {
   local f
   # (shell patterns, relative to the kernel source)
   for f in ${KERNEL_FILES}; do
-    (cd "${w}/linux" && cp -a ${f} "${d}/") || { echo "${name}: FAILED, ${f} is not in this kernel source" >>"${w}/oot-report.txt"; return 1; }
+    (cd "${w}/linux" && cp -a ${f} "${d}/") || { echo "${name}: FAILED, ${f} is not in this kernel source" >>"${rep}"; return 1; }
   done
   # patches/*.patch apply to every series, patches/<series>/*.patch to one.
   for f in "${s}"/patches/*.patch "${s}/patches/${series}"/*.patch; do
     [ -f "${f}" ] || continue
-    patch -d "${d}" -p1 -s <"${f}" || { echo "${name}: patch $(basename "${f}") failed" >>"${w}/oot-report.txt"; return 1; }
+    patch -d "${d}" -p1 -s <"${f}" || { echo "${name}: patch $(basename "${f}") failed" >>"${rep}"; return 1; }
   done
   [ -f "${s}/Kbuild-${series}" ] && cp "${s}/Kbuild-${series}" "${d}/${SUBDIR}/Kbuild"
   [ -f "${s}/Kbuild" ] && [ ! -f "${s}/Kbuild-${series}" ] && cp "${s}/Kbuild" "${d}/${SUBDIR}/Kbuild"
@@ -539,7 +582,7 @@ build_one_oot() {
       intel)
         # Intel's own build (common.mk): it generates kcompat_generated_defs.h
         # from the kernel headers and then runs kbuild itself.
-        make -C "${d}/${SUBDIR}" -j"${JOBS}" KSRC="${w}/linux" KOBJ="${w}/linux" \
+        make -C "${d}/${SUBDIR}" -j"${OOT_JOBS}" KSRC="${w}/linux" KOBJ="${w}/linux" \
           BUILD_KERNEL="$(cat "${w}/release")" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
           CC="${CROSS}gcc" LD="${CROSS}ld" KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} \
           >>"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
@@ -551,12 +594,12 @@ build_one_oot() {
           make KLIB_BUILD="${w}/linux" KLIB="${w}/linux" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
             "${BACKPORT_DEFCONFIG}" &&
           grep -E '^CPTCFG_[A-Z0-9_]+=m' .config &&
-          make -j"${JOBS}" KLIB_BUILD="${w}/linux" KLIB="${w}/linux" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
+          make -j"${OOT_JOBS}" KLIB_BUILD="${w}/linux" KLIB="${w}/linux" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
             KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} modules) \
           >>"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
         ;;
       *)
-        "${KMAKE[@]}" -j"${JOBS}" M="${d}/${SUBDIR}" KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} modules \
+        "${KMAKE[@]}" -j"${OOT_JOBS}" M="${d}/${SUBDIR}" KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} modules \
           >>"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
         ;;
     esac
@@ -564,12 +607,12 @@ build_one_oot() {
   local kos
   kos="$(find "${d}" -name '*.ko' -printf '%f ' | sed 's/\.ko / /g')"
   if [ "${rc}" -ne 0 ] || [ -z "${kos}" ]; then
-    echo "${name}: FAILED (rc ${rc}), see logs/oot-${name}.log: $(grep -m3 -E 'error:|Error [0-9]' "${w}/logs/oot-${name}.log" | tr '\n' ' ')" >>"${w}/oot-report.txt"
+    echo "${name}: FAILED (rc ${rc}), see logs/oot-${name}.log: $(grep -m3 -E 'error:|Error [0-9]' "${w}/logs/oot-${name}.log" | tr '\n' ' ')" >>"${rep}"
     # nothing of a half-built source ships (ice's auxiliary.ko without ice)
     find "${d}" -name '*.ko' -delete
     return 1
   fi
-  echo "${name}: ${kos}" >>"${w}/oot-report.txt"
+  echo "${name}: ${kos}" >>"${rep}"
 }
 
 ###############################################################################
@@ -668,6 +711,7 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       -j) JOBS="$2"; shift 2 ;;
+      -P) PARALLEL="$2"; shift 2 ;;
       -o) OUT_DIR="$2"; shift 2 ;;
       -c) CACHE_DIR="$2"; shift 2 ;;
       -w) WORK_DIR="$2"; shift 2 ;;
@@ -703,10 +747,59 @@ main() {
     command -v "${cmd}" >/dev/null || die "${cmd} is required"
   done
   mkdir -p "${CACHE_DIR}" "${WORK_DIR}" "${OUT_DIR}"
-  local failed=()
-  for t in $(printf '%s\n' "${sel[@]}" | awk '!seen[$0]++'); do
-    ( build_target "${t}" ) || failed+=("${t}")
+  command -v flock >/dev/null || die "flock is required"
+  mapfile -t sel < <(printf '%s\n' "${sel[@]}" | awk '!seen[$0]++')
+
+  # How the CPUs are shared: PARALLEL targets at once, JOBS make jobs each,
+  # and inside a target OOT_PARALLEL out-of-tree sources at once.
+  if [ -z "${PARALLEL}" ]; then
+    if [ ${#sel[@]} -gt 1 ]; then PARALLEL=$((NPROC / 4)); else PARALLEL=1; fi
+  fi
+  [ "${PARALLEL}" -ge 1 ] || PARALLEL=1
+  [ "${PARALLEL}" -le ${#sel[@]} ] || PARALLEL=${#sel[@]}
+  [ -n "${JOBS}" ] || JOBS=$((NPROC / PARALLEL))
+  [ "${JOBS}" -ge 1 ] || JOBS=1
+  OOT_PARALLEL=$(( JOBS >= 4 ? 4 : JOBS ))
+  # most sources are a few files; a big one (drm-backport) still gets a
+  # good share while the small ones finish next to it
+  OOT_JOBS=$(( JOBS / 2 ))
+  [ "${OOT_JOBS}" -ge 2 ] || OOT_JOBS=2
+  export PARALLEL JOBS OOT_PARALLEL OOT_JOBS
+  log "${#sel[@]} target(s): ${PARALLEL} at once, make -j${JOBS} each (${NPROC} CPUs)"
+
+  # The downloads first, one after another, so the targets then only read
+  # the cache (the out-of-tree ones are fetched under the cache lock).
+  local t
+  for t in "${sel[@]}"; do
+    [ "${T_GPL[${t}]}" = "none" ] && continue
+    ( fetch_inputs "${t}" ) || die "${t}: cannot get its inputs"
   done
+  [ "${FETCH_ONLY}" -eq 1 ] && { log "done: inputs of ${#sel[@]} target(s) in ${CACHE_DIR}"; return 0; }
+
+  local start failed=() pid
+  declare -A PIDS
+  start=$(date +%s)
+  mkdir -p "${OUT_DIR}/logs"
+  for t in "${sel[@]}"; do
+    if [ "${PARALLEL}" -eq 1 ]; then
+      ( build_target "${t}" ) || failed+=("${t}")
+      continue
+    fi
+    while [ "$(jobs -rp | wc -l)" -ge "${PARALLEL}" ]; do wait -n || true; done
+    log "start ${t} (log ${OUT_DIR}/logs/${t}.log)"
+    ( build_target "${t}" ) >"${OUT_DIR}/logs/${t}.log" 2>&1 &
+    PIDS[${t}]=$!
+  done
+  for t in "${!PIDS[@]}"; do
+    pid=${PIDS[${t}]}
+    if wait "${pid}"; then
+      log "${t}: $(grep -m1 -o 'modules: [0-9]*' "${OUT_DIR}/reports/${t}.txt" 2>/dev/null || echo skipped)"
+    else
+      failed+=("${t}")
+      log "${t}: FAILED, $(grep -m1 'ERROR' "${OUT_DIR}/logs/${t}.log" | cut -c1-200)"
+    fi
+  done
+  log "${#sel[@]} target(s) in $(( ($(date +%s) - start) / 60 )) min"
   if [ ${#failed[@]} -gt 0 ]; then
     die "failed targets: ${failed[*]}"
   fi
