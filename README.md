@@ -58,10 +58,11 @@ Output, per target:
 
 A target needs about 5 GB in the work folder while it builds; it is removed
 afterwards unless `--keep` is given. Inside a target the out-of-tree sources
-build four at a time. On the 16-CPU build host, 4 targets at once built 29
-targets in 78 minutes (2.7 minutes per target); one at a time had taken
-6.7 minutes per 4.4 target and about 9 per 5.10 target. A target built
-either way is byte-identical. Requirements: bash, curl, tar, xz,
+build four at a time. On the 16-CPU build host, 4 targets at once build
+`all` in about 130 minutes (about 3 minutes per target; the Mellanox OFED
+build alone takes several minutes on the 4.4 platforms that get it); one
+at a time had taken 6.7 minutes per 4.4 target and about 9 per 5.10 target
+before OFED. A target built either way is byte-identical. Requirements: bash, curl, tar, xz,
 python3, make, gcc (host tools), patch, git, flock.
 
 ## How a target is built
@@ -90,10 +91,12 @@ python3, make, gcc (host tools), patch, git, flock.
    and `config/<series>/patches/*.patch` are applied (fixes that let an
    in-tree driver build against Synology's tree).
    Bools the official kernel has off that something in the fragment selects
-   (on some platforms NET_DEVLINK, PAGE_POOL, DIMLIB, IRQ_POLL, or the
-   HDMI/SYNC_FILE a DRM driver needs) are not an error: what selects them is
-   turned off and listed in the report, so a driver the official kernel
-   cannot carry is left out instead of changing the kernel's ABI.
+   (IRQ_POLL on the nk kernels, or the HDMI/SYNC_FILE a DRM driver needs on
+   4.4) are not an error: what selects them is turned off and listed in the
+   report, so a driver the official kernel cannot carry is left out instead
+   of changing the kernel's ABI. The ones whose code can live in a module of
+   its own (power_supply, devlink, page_pool, dimlib) are allowed, and that
+   module is built (see Out-of-tree sources).
 3. **Release**: `LOCALVERSION` makes the tree's release the official one
    (`4.4.302+`, `5.10.55+`), so every module gets the official vermagic.
 4. **In-tree modules**: `make -k modules` in the configured tree (vmlinux is
@@ -113,12 +116,17 @@ python3, make, gcc (host tools), patch, git, flock.
    official kernel does not have, the official modules named in
    `config/<series>/official.list` (arc loads them early), and what those
    depend on. An out-of-tree module replaces the in-tree one of the same
-   name. Each shipped module must carry the official vermagic and resolve
-   every undefined symbol from vmlinux (the toolkit's `Module.symvers`) or
-   another shipped module; a module that does not is dropped and listed in
-   the report with the symbols it lacks.
+   name, except a helper built only from the target's own kernel source
+   (marked `.kernel-source`), which is the same code: where the kernel build
+   made that module, the in-tree one stays. An in-tree module that depends
+   on a replaced one was compiled against the replaced module's structures
+   and exports (these kernels have no symbol versions to catch that) and is
+   dropped. Each shipped module must carry the official vermagic and
+   resolve every undefined symbol from vmlinux (the toolkit's
+   `Module.symvers`) or another shipped module; a module that does not is
+   dropped and listed in the report with the symbols it lacks.
 
-## Verified (2026-11-26, build host: `./build.sh --strict --tgz all`)
+## Verified (2026-11-27, build host: `./build.sh --strict --tgz all`)
 
 Every target of platforms.conf except epyc7003ntb (no source, see below)
 builds; `-r` compared each with the dev branch's `modules/<target>/`.
@@ -126,66 +134,73 @@ builds; `-r` compared each with the dev branch's `modules/<target>/`.
 the same (0 everywhere); "dropped" are built modules the symbol or
 vermagic check refused (every shipped one resolves all its symbols);
 "turned off" are symbols turned off because the driver does not compile
-here or needs a bool the official kernel has off (DRM on the 4.4
-platforms without it, NET_DEVLINK/IRQ_POLL on the nk 7.2 kernels,
-POWER_SUPPLY for typec, ...); "headers replaced" are source headers
-replaced by the official ones. `scripts/summary.py output/reports` prints
-this table.
+here or needs a bool the official kernel has off whose code cannot live in
+a module (DRM on the 4.4 platforms without it, IRQ_POLL on the nk kernels,
+...); "headers replaced" are source headers replaced by the official ones.
+`scripts/summary.py output/reports` prints this table. Every module the
+prebuilt set has is built, except the ones built into the official vmlinux
+and a few of DSM's own (see "What does not come from source").
 
 | target | shipped | prebuilt | both | vermagic differs | dropped | turned off | oot failed | headers replaced |
 |---|---|---|---|---|---|---|---|---|
-| apollolake-7.2-4.4.302 | 466 | 408 | 395 | 0 | 4 | 5 | - | 1 |
-| apollolake-7.3-4.4.302 | 466 | 408 | 395 | 0 | 4 | 5 | - | 0 |
-| apollolake-7.4-4.4.302 | 466 | 408 | 395 | 0 | 4 | 5 | - | 0 |
-| broadwell-7.2-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 1 |
-| broadwell-7.3-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
-| broadwell-7.4-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
-| broadwellnk-7.2-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 1 |
-| broadwellnk-7.3-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
-| broadwellnk-7.4-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
-| broadwellnkv2-7.2-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 1 |
-| broadwellnkv2-7.3-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
-| broadwellnkv2-7.4-4.4.302 | 443 | 365 | 346 | 0 | 2 | 29 | - | 0 |
-| broadwellntbap-7.2-4.4.302 | 444 | 368 | 349 | 0 | 2 | 29 | - | 1 |
-| broadwellntbap-7.3-4.4.302 | 444 | 368 | 349 | 0 | 2 | 29 | - | 0 |
-| broadwellntbap-7.4-4.4.302 | 444 | 368 | 349 | 0 | 2 | 29 | - | 0 |
-| denverton-7.2-4.4.302 | 455 | 368 | 353 | 0 | 4 | 27 | - | 1 |
-| denverton-7.3-4.4.302 | 455 | 368 | 353 | 0 | 4 | 27 | - | 0 |
-| denverton-7.4-4.4.302 | 455 | 368 | 353 | 0 | 4 | 27 | - | 0 |
-| epyc7002-7.2-5.10.55 | 520 | 449 | 418 | 0 | 1 | 4 | - | 1 |
-| epyc7002-7.3-5.10.55 | 520 | 449 | 418 | 0 | 1 | 4 | - | 0 |
-| epyc7002-7.4-5.10.55 | 520 | 449 | 418 | 0 | 1 | 4 | - | 0 |
-| epyc7003-7.4-5.10.55 | 518 | 447 | 416 | 0 | 1 | 4 | - | 0 |
-| geminilake-7.2-4.4.302 | 462 | 406 | 392 | 0 | 4 | 5 | - | 1 |
-| geminilake-7.3-4.4.302 | 462 | 406 | 392 | 0 | 4 | 5 | - | 0 |
-| geminilake-7.4-4.4.302 | 462 | 406 | 392 | 0 | 4 | 5 | - | 0 |
-| geminilakenk-7.2-5.10.55 | 487 | 457 | 399 | 0 | 3 | 28 | ice ixgbe | 20 |
-| geminilakenk-7.3-5.10.55 | 487 | 457 | 399 | 0 | 3 | 24 | ice ixgbe | 0 |
-| geminilakenk-7.4-5.10.55 | 487 | 457 | 399 | 0 | 3 | 24 | ice ixgbe | 0 |
-| icelaked-7.4-5.10.55 | 513 | 439 | 408 | 0 | 1 | 6 | - | 0 |
-| purley-7.2-4.4.302 | 450 | 369 | 350 | 0 | 2 | 31 | - | 1 |
-| purley-7.3-4.4.302 | 450 | 369 | 350 | 0 | 2 | 31 | - | 0 |
-| purley-7.4-4.4.302 | 450 | 369 | 350 | 0 | 2 | 31 | - | 0 |
-| r1000-7.2-4.4.302 | 449 | 374 | 349 | 0 | 3 | 35 | - | 1 |
-| r1000-7.3-4.4.302 | 449 | 374 | 349 | 0 | 3 | 35 | - | 0 |
-| r1000-7.4-4.4.302 | 449 | 374 | 349 | 0 | 3 | 35 | - | 0 |
-| r1000nk-7.2-5.10.55 | 505 | 439 | 399 | 0 | 3 | 12 | - | 19 |
-| r1000nk-7.3-5.10.55 | 505 | 439 | 399 | 0 | 3 | 8 | - | 0 |
-| r1000nk-7.4-5.10.55 | 505 | 439 | 399 | 0 | 3 | 8 | - | 0 |
-| v1000-7.2-4.4.302 | 451 | 377 | 352 | 0 | 1 | 35 | - | 1 |
-| v1000-7.3-4.4.302 | 451 | 377 | 352 | 0 | 1 | 35 | - | 0 |
-| v1000-7.4-4.4.302 | 451 | 377 | 352 | 0 | 1 | 35 | - | 0 |
-| v1000nk-7.2-5.10.55 | 507 | 442 | 402 | 0 | 1 | 12 | - | 19 |
-| v1000nk-7.3-5.10.55 | 507 | 442 | 402 | 0 | 1 | 8 | - | 0 |
-| v1000nk-7.4-5.10.55 | 507 | 443 | 403 | 0 | 1 | 8 | - | 0 |
+| apollolake-7.2-4.4.302 | 483 | 408 | 407 | 0 | 0 | 3 | - | 1 |
+| apollolake-7.3-4.4.302 | 483 | 408 | 407 | 0 | 0 | 3 | - | 0 |
+| apollolake-7.4-4.4.302 | 483 | 408 | 407 | 0 | 0 | 3 | - | 0 |
+| broadwell-7.2-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 1 |
+| broadwell-7.3-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 0 |
+| broadwell-7.4-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 0 |
+| broadwellnk-7.2-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 1 |
+| broadwellnk-7.3-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 0 |
+| broadwellnk-7.4-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 0 |
+| broadwellnkv2-7.2-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 1 |
+| broadwellnkv2-7.3-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 0 |
+| broadwellnkv2-7.4-4.4.302 | 464 | 365 | 361 | 0 | 0 | 27 | - | 0 |
+| broadwellntbap-7.2-4.4.302 | 465 | 368 | 364 | 0 | 0 | 27 | - | 1 |
+| broadwellntbap-7.3-4.4.302 | 465 | 368 | 364 | 0 | 0 | 27 | - | 0 |
+| broadwellntbap-7.4-4.4.302 | 465 | 368 | 364 | 0 | 0 | 27 | - | 0 |
+| denverton-7.2-4.4.302 | 477 | 368 | 367 | 0 | 0 | 25 | - | 1 |
+| denverton-7.3-4.4.302 | 477 | 368 | 367 | 0 | 0 | 25 | - | 0 |
+| denverton-7.4-4.4.302 | 477 | 368 | 367 | 0 | 0 | 25 | - | 0 |
+| epyc7002-7.2-5.10.55 | 557 | 449 | 448 | 0 | 0 | 0 | - | 1 |
+| epyc7002-7.3-5.10.55 | 557 | 449 | 448 | 0 | 0 | 0 | - | 0 |
+| epyc7002-7.4-5.10.55 | 557 | 449 | 448 | 0 | 0 | 0 | - | 0 |
+| epyc7003-7.4-5.10.55 | 555 | 447 | 446 | 0 | 0 | 0 | - | 0 |
+| geminilake-7.2-4.4.302 | 479 | 406 | 404 | 0 | 0 | 3 | - | 1 |
+| geminilake-7.3-4.4.302 | 479 | 406 | 404 | 0 | 0 | 3 | - | 0 |
+| geminilake-7.4-4.4.302 | 479 | 406 | 404 | 0 | 0 | 3 | - | 0 |
+| geminilakenk-7.2-5.10.55 | 553 | 457 | 451 | 0 | 0 | 7 | - | 20 |
+| geminilakenk-7.3-5.10.55 | 553 | 457 | 451 | 0 | 0 | 3 | - | 0 |
+| geminilakenk-7.4-5.10.55 | 553 | 457 | 451 | 0 | 0 | 3 | - | 0 |
+| icelaked-7.4-5.10.55 | 549 | 439 | 436 | 0 | 0 | 2 | - | 0 |
+| purley-7.2-4.4.302 | 470 | 369 | 364 | 0 | 0 | 29 | - | 1 |
+| purley-7.3-4.4.302 | 470 | 369 | 364 | 0 | 0 | 29 | - | 0 |
+| purley-7.4-4.4.302 | 470 | 369 | 364 | 0 | 0 | 29 | - | 0 |
+| r1000-7.2-4.4.302 | 479 | 374 | 371 | 0 | 0 | 33 | - | 1 |
+| r1000-7.3-4.4.302 | 479 | 374 | 371 | 0 | 0 | 33 | - | 0 |
+| r1000-7.4-4.4.302 | 479 | 374 | 371 | 0 | 0 | 33 | - | 0 |
+| r1000nk-7.2-5.10.55 | 557 | 439 | 438 | 0 | 0 | 7 | - | 19 |
+| r1000nk-7.3-5.10.55 | 557 | 439 | 438 | 0 | 0 | 3 | - | 0 |
+| r1000nk-7.4-5.10.55 | 557 | 439 | 438 | 0 | 0 | 3 | - | 0 |
+| v1000-7.2-4.4.302 | 479 | 377 | 374 | 0 | 0 | 33 | - | 1 |
+| v1000-7.3-4.4.302 | 479 | 377 | 374 | 0 | 0 | 33 | - | 0 |
+| v1000-7.4-4.4.302 | 479 | 377 | 374 | 0 | 0 | 33 | - | 0 |
+| v1000nk-7.2-5.10.55 | 557 | 442 | 441 | 0 | 0 | 7 | - | 19 |
+| v1000nk-7.3-5.10.55 | 557 | 442 | 441 | 0 | 0 | 3 | - | 0 |
+| v1000nk-7.4-5.10.55 | 557 | 443 | 442 | 0 | 0 | 3 | - | 0 |
 
 GPU modules shipped: i915, i915-compat, dmabuf, drm, ttm, amdgpu on every
 5.10 target but geminilakenk (amdgpu, ttm and bochs-drm there, on DSM's own
 drm and i915); the official i915 and drm on apollolake and geminilake (4.4),
 as in the prebuilt set. No other 4.4 kernel has DRM.
 
-Not loaded on a running DSM yet: the build proves vermagic, symbol
-resolution and the official struct layout (headers), not behaviour.
+Loaded in DSM 7.2.2-72806 VMs (junior mode, QEMU q35) on DS918+
+(apollolake), SA6400 (epyc7002), DS225+ (geminilakenk) and DS725+ (r1000nk):
+the new core modules (power_supply, devlink, page_pool, dimlib) and their
+users, the InfiniBand stack, geminilakenk's drm/i915 (virtio-gpu and
+bochs-drm bound QEMU's devices), the stub-built helpers, binder/ashmem,
+tn40xx, i2c-i801, i8042/atkbd, the ACPI button, e1000e and igb (link,
+DHCP) loaded through depmod/modprobe and unloaded again, without oops or
+warning. No real hardware was used.
 
 ## GPU (i915, amdgpu)
 
@@ -201,13 +216,14 @@ resolution and the official struct layout (headers), not behaviour.
   official vmlinux has none of these types, so the backport's own
   definitions change nothing it shares; the symbol check proves nothing
   of it needs vmlinux code the official kernel lacks. amdgpu asks the
-  power-supply class (off in these kernels) only whether the system is on
-  AC; without the class it is treated as on AC.
-* **geminilakenk**: DRM, DMA_SHARED_BUFFER and i915 are official there and
-  DSM loads its own i915. The backport is not built (its drm.ko would sit
-  under DSM's i915); drm, drm_kms_helper and i915 are not rebuilt either.
-  amdgpu is built in-tree (`config/5.10/geminilakenk.config`, display core
-  off) on DSM's own drm.ko, with ttm, gpu-sched and the ttm helper.
+  power-supply class whether the system is on AC (src/power_supply).
+* **geminilakenk**: DRM, DMA_SHARED_BUFFER and i915 are official there. The
+  backport is not built (its dma-buf would clash with vmlinux's); drm,
+  drm_kms_helper and i915 are rebuilt from the same source and ship
+  (`config/5.10/geminilakenk.list`), drm with the GEM shmem/CMA helpers
+  virtio-gpu, udl and arcpgu need. amdgpu is built in-tree
+  (`config/5.10/geminilakenk.config`, display core off), with ttm,
+  gpu-sched, the ttm helper, bochs-drm, virtio-gpu, udl and arcpgu.
 * **4.4**: only apollolake and geminilake had i915 in the prebuilt set, and
   there DRM and i915 are official; the official i915/drm are rebuilt from
   the same GPL source and official .config and ship through official.list,
@@ -219,40 +235,65 @@ pinned commit with a GitHub token from `ARC_GITHUB_TOKEN` (or `AUX_TOKEN`),
 handed to git through the environment only. Without a token that one
 source fails and the rest of the target still builds.
 
-## What does not come from source (yet)
+## What does not come from source
 
 **epyc7003ntb-7.4-5.10.55** is skipped: Synology publishes no kernel source
 for it, and epyc7003's differs from its official kernel in 131 headers (its
 asm-offsets do not compile against them). Its package stays the prebuilt
 one.
 
-Compared with the prebuilt packages (`modules/<target>/` on the dev
-branch), these are still not built here, and why:
+Every module the prebuilt packages (`modules/<target>/` on the dev branch)
+have was checked against each target's official kernel: its `.config` and
+`modules.builtin` from the dev toolkit (the GPL `synoconfigs/` match it on
+every platform but broadwell, whose synoconfig is another kernel's), its
+`modules.order`, and whether the prebuilt file is one of DSM's own
+(Synology-signed). Options the official kernel has off are built as modules
+with what they need, the way the prebuilt set does it, as long as vmlinux
+has no code depending on them and no struct it shares with modules changes
+(power_supply, devlink, page_pool, dimlib, the InfiniBand core without
+irq_poll, geminilakenk's drm with the GEM helpers, ...); vmlinux itself is
+never changed. What is left of the prebuilt set and is not built here:
 
-* **Core bools the prebuilt set had turned into modules**: power_supply,
-  devlink, page_pool, dimlib, regmap-mmio, cpufreq_governor on 5.10, ... They
-  change structs the official kernel shares. What needs them is turned off
-  and listed: typec/tcpm/fusb302, gpio-charger, pwm-fan (POWER_SUPPLY,
-  REGULATOR, PWM); on geminilakenk mlx4/5, mlxsw, bnxt, ice, ixgbe, qed,
-  hinic (NET_DEVLINK, DIMLIB), megaraid_sas (IRQ_POLL), virtio-gpu and udl
-  (DRM_GEM_SHMEM_HELPER, part of DSM's drm.ko).
-* **Needs vmlinux code the official kernel lacks**: kvm-intel on the AMD
-  5.10 platforms (l1tf_mitigation, asm_exc_nmi_noist), sata_sil on 4.4
-  (Synology's libata hooks), scsi_transport_fc/libfc on 4.4 (SCSI_NETLINK),
-  cpufreq ondemand/conservative on 5.10 (cpufreq_this_cpu_can_update),
-  ashmem and binder on 5.10 (kallsyms_lookup_name, shmem_zero_setup).
-* **Does not compile against Synology's tree**: on 4.4 snd-soc-*, the realtek
-  HDA codec, pmbus (Synology hooks missing), the phylib PHY drivers on r1000
-  (its phy.h is newer than its drivers); mpi3mr needs blk-mq-pci (4.9+).
-* **No source found, or none that builds here**: atlantic 2.5.12 (Marvell's
-  site only; GitHub's AQtion is 2.5.5), megaraid_sas 07.7xx (the kernels'
-  own 06.808 and 07.714 are built), the Mellanox OFED 4.1 stack with
-  mlx_compat (the kernels' own mlx4/mlx5 are built), QLogic FastLinQ 8.59
-  (8.70.12 is public but needs 4.11+ and another devlink API; the kernels'
-  own qed/qede are built), qedr on 4.4, the BMC drivers (kcs_bmc, bt-bmc:
-  ASPEED/Nuvoton SoCs only).
-* **Older than prebuilt on 4.4**: r8126 10.017.00, r8152 2.21.4 and r8168
-  8.056.02 (dsm_linux_fix's copies; the newer releases do not build on 4.4).
+| module | where | why |
+|---|---|---|
+| cpufreq_userspace | every target | built into the official vmlinux (CPU_FREQ_GOV_USERSPACE=y) |
+| cpufreq_governor | broadwell*, purley, r1000, v1000 | built in (CPU_FREQ_GOV_COMMON=y; ondemand/conservative too) |
+| it87 | broadwell*, purley, icelaked | built in (SENSORS_IT87=y) |
+| i8042 | geminilake | built in (SERIO_I8042=y) |
+| button | purley | built in (ACPI_BUTTON=y) |
+| libphy | r1000, v1000 | built in (PHYLIB=y) |
+| i2c-i801 | geminilakenk, icelaked | built in (I2C_I801=y) |
+| check_signature, dmabuf | geminilakenk | built in (CHECK_SIGNATURE=y, DMA_SHARED_BUFFER=y) |
+| drm_buddy, drm_display_helper | geminilakenk | modules of the 6.x DRM backport only; geminilakenk's 5.10 drm.ko/drm_kms_helper.ko, shipped here, hold that code |
+| qedr | broadwell*, purley | DSM's own (Synology-signed 8.33.9.0, built on DSM's Mellanox OFED): qed/qede ship here from the same 8.33.9.0 source and OFED from the same 4.1 commit, so DSM's qedr loads on them; FastLinQ's qedr Makefile cannot build against OFED 4.1 |
+
+A module built into vmlinux cannot also load as a module (its exports or
+its device are already taken), so the prebuilt copies of those were
+duplicates.
+
+Also not built, although they are no prebuilt module:
+
+* **mpi3mr on 4.4**: no release builds there. The oldest one (8.5.1,
+  45Drives' mirror of Broadcom's source) stops at about 40 places on the
+  first pass: the PCI IRQ vector API (`pci_alloc_irq_vectors_affinity()`,
+  4.10), blk-mq-pci (4.9), the bsg-lib job interface, `SCSI_SCAN_INITIAL`;
+  its interrupt setup is built on the IRQ affinity layer 4.4 does not have.
+* **ASoC (snd-soc-*) on 4.4**: Synology's 4.4 has a newer ALSA core than its
+  ASoC (`snd_power_lock()` is gone, the regmap cache calls are not declared
+  where ASoC expects them): 19 errors in the core alone; nothing shipped
+  needs it, and the prebuilt set had none.
+* **snd-hda-ext-core on 4.4**: Synology's 4.4 HDA core lacks what it uses
+  (`_snd_hdac_chip_read()`); the prebuilt set had none on 4.4 either.
+
+Caveats of modules built against an option vmlinux has off: pages an XDP
+redirect hands back to a driver's page_pool (mlx5, bnxt on geminilakenk) are
+not recycled by vmlinux's XDP code; devlink cannot reload a device into a
+network namespace given by its id (by pid or fd it can); InfiniBand
+completion queues that ask for softirq polling are polled from a workqueue.
+Modules built on their own against the headers' stubs (pwm-fan, gpio-beeper
+without GPIOLIB, qcaspi without OF, phy-mt65xx-usb3, mtk-sd, phy-lgm-usb,
+the BMC IPMI drivers) load and bind only the device-tree nodes those
+kernels do not have.
 
 ## Layout
 
@@ -282,39 +323,59 @@ Each `src/<name>/module.conf` is a shell fragment:
 | `ORIGIN` | where the source comes from (repository and commit, or release) |
 | `SERIES` | kernel series it builds for (`"4.4 5.10"`) |
 | `FETCH_URL`, `FETCH_KEY` | a pinned download instead of vendored files (`FETCH_KEY` names it in the cache, its sha256 is in `checksums.sha256`); `FETCH_STRIP` components are stripped (default 1) |
+| `FETCH_INNER` | the driver's tarball inside the download (a vendor zip or source RPM, `scripts/inner.py`): a member pattern, `a!b` for a member of a member; the checksum pins the download |
+| `FETCH_UA` | user agent for the download (Supermicro's and Marvell's servers refuse curl's) |
 | `SUBDIR` | the folder (inside the source) that holds the Kbuild Makefile |
 | `MAKE_ARGS` | extra make arguments, usually `CONFIG_<DRIVER>=m` or a driver's own options; `@KSRC@` and `@RELEASE@` become the kernel tree and release |
 | `GIT_URL`, `GIT_COMMIT` | a repository fetched at one commit (the pin); a private one needs `ARC_GITHUB_TOKEN` |
-| `BUILD` | `kbuild` (default: `make M=`), `intel` (Intel's own `common.mk`, which generates `kcompat_generated_defs.h` from the kernel headers first) or `backport` (a Linux backports tree: `make BACKPORT_DEFCONFIG`, then `make modules`) |
+| `BUILD` | `kbuild` (default: `make M=`), `intel` (Intel's own `common.mk`, which generates `kcompat_generated_defs.h` from the kernel headers first), `make` (the vendor's own Makefile, given the toolchain and release; FastLinQ, OFED) or `backport` (a Linux backports tree: `make BACKPORT_DEFCONFIG`, then `make modules`) |
 | `UNLESS_OFFICIAL` | symbols; the source is skipped where the official kernel sets one of them |
 | `IF_OFFICIAL` | symbols; the source is skipped where the official kernel lacks one of them |
 | `PLATFORMS` | build only for these platforms |
 | `FILES_FROM` | use another recipe's vendored folder (`src/<FILES_FROM>`) |
 | `KERNEL_FILES` | files (shell patterns) copied from the target's kernel source (a renamed in-tree driver, a helper) |
-| `oot_prepare()` | optional shell function run in the copied source before make |
+| `oot_prepare()` | optional shell function run in the copied source before make; `OOT_KSRC` (the kernel tree), `OOT_OFFICIAL_CONFIG` (the official kernel's configuration), `OOT_SERIES`, `OOT_RELEASE` and `s` (the recipe folder) are set |
 
 Kinds of sources here:
 
-* vendor drivers, vendored: Realtek r8127/r8169 and, for 4.4, r8126/r8152/
-  r8168 (from dsm_linux_fix), Broadcom mpt3sas (46.00 for 4.4 and the 5.10
-  kernels without IRQ_POLL, 55.00 elsewhere) and bnxt_en 1.8.54 (4.4), HP
-  hpsa (4.4),
+* vendor drivers, vendored: Realtek r8169 (from dsm_linux_fix), Broadcom
+  mpt3sas 46.00 (4.4) and 55.00 (5.10) and bnxt_en 1.8.54 (4.4), HP hpsa
+  (4.4),
 * GPU: drm-backport (pinned commit of a private repository, see GPU above),
 * vendor drivers, pinned downloads: Intel igb/ixgbe/ixgbevf/i40e/iavf/ice
-  (newest release on 5.10, the last one that builds on 4.4) and e1000e
-  3.8.7 (4.4), Realtek r8125 9.018.00 and, on 5.10, r8126 10.018.00, r8152
-  2.22.1, r8168 8.057.00, Microchip smartpqi 2.1.42-011, Broadcom mpi3mr
-  8.19.1 (5.10), Motorcomm yt6801, Aquantia atlantic and aqc111 (4.4),
+  (newest release on 5.10, the last one that builds on 4.4; on 4.4 also
+  Intel's prefixed intel_auxiliary bus) and e1000e 3.8.7 with PTP and the
+  4.16 82574 MSI-X fixes (4.4); Tehuti tn40xx 006 with every PHY; Realtek r8125 9.018.00, r8126 10.018.00, r8127 11.017.02,
+  r8152 2.22.1, r8168 8.057.00 (with small 4.4 shims); Marvell atlantic
+  2.5.12 and FastLinQ qed/qede/qedr 8.59.6.0 (8.33.9.0 qed/qede where DSM
+  ships its own FastLinQ); Broadcom megaraid_sas 07.731.01.00, mpt3sas 53.00
+  (5.10 without IRQ_POLL) and mpi3mr 8.19.1 (5.10); Mellanox OFED
+  4.1-1.0.2.0 (mlx_compat, the InfiniBand core, mlx4/mlx5) where DSM ships
+  it; Microchip smartpqi 2.1.42-011, Motorcomm yt6801, aqc111 (4.4),
   WireGuard and exFAT for 4.4, igc for 4.4, Coral gasket/apex for 4.4,
-  ashmem/binder (4.4), AIC8800 aic_load_fw, acpi_call, tty0tty, WCH
+  ashmem/binder (anbox, 4.4), AIC8800 aic_load_fw, acpi_call, tty0tty, WCH
   ch35x_38x,
-* kernel drivers built under another name: r8169_lk (the kernel's r8169
-  next to Realtek's),
-* kernel helpers the official vmlinux leaves out (their bool is off), built
-  as modules from the target's own source: check_signature, textsearch,
-  hvc_console, blk-mq-virtio, ipmi_plat_data/ipmi_dmi, pldmfw,
-  sdhci-pci-data, intel_idle, i8042, atkbd, cpufreq ondemand/conservative
-  with their common code (4.4), efifb/vesafb (apollolake, geminilake).
+* kernel drivers built under another name or outside their Kconfig, from
+  the target's own source: r8169_lk (the kernel's r8169 next to
+  Realtek's), the r1000/v1000 phylib drivers (tg3, b44, asix, lan78xx and
+  the Broadcom/Realtek/Microchip PHYs, src/phylib_mdio), binder and ashmem
+  on 5.10 (the unexported functions they use found by name at load time),
+* options the official kernel has off, built as modules of their own the
+  way the prebuilt set has them, where vmlinux has no code depending on
+  them and no struct it shares changes (`config/5.10/abi-allow.list` turns
+  them on for the drivers): power_supply, devlink, page_pool, dimlib; the
+  InfiniBand core without irq_poll (patches/0006), drivers built against the
+  headers' stubs (pwm-fan, gpio-beeper, qcaspi, phy-mt65xx-usb3, mtk-sd,
+  phy-lgm-usb, the BMC IPMI drivers),
+* kernel helpers the official vmlinux leaves out (their bool is off, or a
+  tristate without a prompt nothing selects), built as modules from the
+  target's own source: check_signature, textsearch, hvc_console,
+  blk-mq-virtio, ipmi_plat_data/ipmi_dmi, pldmfw, sdhci-pci-data,
+  intel_idle, i8042, atkbd, cpufreq ondemand/conservative with their common
+  code, efifb/vesafb (apollolake, geminilake), the framebuffer drawing
+  helpers (cfb*, sys*, fb_sys_fops), snd-pcm-dmaengine, snd-compress,
+  snd-hda-ext-core (5.10), pcspkr/pcspeaker, the USB PHY layer (phy),
+  i2c-smbus, regmap-mmio (5.10), virtio_dma_buf (geminilakenk).
 
 Vendored files live in `src/<name>/files/` (every series) or
 `src/<name>/<series>/` (one series). `src/<name>/module-<series>.conf`,
