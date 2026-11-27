@@ -1,0 +1,1 @@
+obj-m += cfbfillrect.o cfbcopyarea.o cfbimgblt.o sysfillrect.o syscopyarea.o sysimgblt.o fb_sys_fops.o

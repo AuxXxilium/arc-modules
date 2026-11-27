@@ -1,0 +1,3 @@
+obj-m += ashmem_linux.o
+ashmem_linux-y := ashmem.o arc-ksyms.o
+ccflags-y += -I$(src)

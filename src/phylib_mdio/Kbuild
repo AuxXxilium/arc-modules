@@ -1,0 +1,2 @@
+obj-m += tg3.o b44.o bcm-phy-lib.o broadcom.o realtek.o microchip.o lan78xx.o asix.o
+asix-y := asix_devices.o asix_common.o ax88172a.o

@@ -1,0 +1,1 @@
+obj-m += pcspeaker.o pcspkr.o

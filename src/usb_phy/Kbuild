@@ -1,0 +1,2 @@
+obj-m += phy.o
+ccflags-y += -DCONFIG_USB_PHY_MODULE=1
