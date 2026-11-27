@@ -135,13 +135,14 @@ cache_unlock() {
   exec {CACHE_LOCK_FD}>&-
 }
 
-fetch() { # fetch <url> <dest> <key>
-  local url="$1" dest="$2" key="$3"
+fetch() { # fetch <url> <dest> <key> [user agent]
+  local url="$1" dest="$2" key="$3" ua=()
+  [ -n "${4:-}" ] && ua=(-A "$4")
   cache_lock
   if [ ! -s "${dest}" ]; then
     mkdir -p "$(dirname "${dest}")"
     log "download ${url}"
-    curl -fL --retry 3 --connect-timeout 30 -o "${dest}.part" "${url}" || { rm -f "${dest}.part"; die "download failed: ${url}"; }
+    curl -fL --retry 3 --connect-timeout 30 "${ua[@]}" -o "${dest}.part" "${url}" || { rm -f "${dest}.part"; die "download failed: ${url}"; }
     mv -f "${dest}.part" "${dest}"
   fi
   cache_unlock
@@ -508,7 +509,7 @@ build_one_oot() {
   local t="$1" w="$2" series="$3" name="$4" rep="$5"
   local s="${ROOT}/src/${name}" d="${w}/oot/${name}" rc=0
   # module.conf variables
-  local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 SUBDIR="." MAKE_ARGS="" KERNEL_FILES=""
+  local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 FETCH_INNER="" FETCH_UA="" SUBDIR="." MAKE_ARGS="" KERNEL_FILES=""
   local GIT_URL="" GIT_COMMIT="" BACKPORT_DEFCONFIG="" UNLESS_OFFICIAL="" IF_OFFICIAL="" PLATFORMS="" FILES_FROM="" BUILD="kbuild"
   unset -f oot_prepare 2>/dev/null || true
   # shellcheck source=/dev/null
@@ -542,8 +543,17 @@ build_one_oot() {
     git -C "${CACHE_DIR}/git/${name}-${GIT_COMMIT}" archive HEAD | tar -x -C "${d}"
   elif [ -n "${FETCH_URL}" ]; then
     local key="oot/${FETCH_KEY:-$(basename "${FETCH_URL}")}"
-    fetch "${FETCH_URL}" "${CACHE_DIR}/${key}" "${key}"
-    tar -xaf "${CACHE_DIR}/${key}" -C "${d}" --strip-components="${FETCH_STRIP}"
+    fetch "${FETCH_URL}" "${CACHE_DIR}/${key}" "${key}" "${FETCH_UA}"
+    if [ -n "${FETCH_INNER}" ]; then
+      # the driver's tarball inside the vendor's zip or source RPM (the
+      # pinned checksum covers the download)
+      python3 -I "${ROOT}/scripts/inner.py" "${CACHE_DIR}/${key}" "${FETCH_INNER}" "${d}.inner" >/dev/null \
+        && tar -xaf "${d}.inner" -C "${d}" --strip-components="${FETCH_STRIP}" \
+        || { rm -f "${d}.inner"; echo "${name}: FAILED, cannot unpack ${FETCH_INNER} from ${key}" >>"${rep}"; return 1; }
+      rm -f "${d}.inner"
+    else
+      tar -xaf "${CACHE_DIR}/${key}" -C "${d}" --strip-components="${FETCH_STRIP}"
+    fi
   elif [ -n "${FILES_FROM}" ]; then
     # another recipe's vendored files (src/<FILES_FROM>)
     cp -a "${ROOT}/src/${FILES_FROM}/." "${d}/"
@@ -561,6 +571,11 @@ build_one_oot() {
   for f in ${KERNEL_FILES}; do
     (cd "${w}/linux" && cp -a ${f} "${d}/") || { echo "${name}: FAILED, ${f} is not in this kernel source" >>"${rep}"; return 1; }
   done
+  # Built only from the target's own source: where the kernel build made
+  # the same module, collect.py keeps that one.
+  if [ -n "${KERNEL_FILES}" ] && [ -z "${FETCH_URL}${GIT_URL}${FILES_FROM}" ] && [ ! -d "${s}/${series}" ] && [ ! -d "${s}/files" ]; then
+    touch "${d}/.kernel-source"
+  fi
   # patches/*.patch apply to every series, patches/<series>/*.patch to one.
   for f in "${s}"/patches/*.patch "${s}/patches/${series}"/*.patch; do
     [ -f "${f}" ] || continue
@@ -570,7 +585,8 @@ build_one_oot() {
   [ -f "${s}/Kbuild" ] && [ ! -f "${s}/Kbuild-${series}" ] && cp "${s}/Kbuild" "${d}/${SUBDIR}/Kbuild"
 
   if declare -F oot_prepare >/dev/null; then
-    (cd "${d}" && OOT_KSRC="${w}/linux" OOT_SERIES="${series}" OOT_RELEASE="$(cat "${w}/release")" oot_prepare) \
+    (cd "${d}" && OOT_KSRC="${w}/linux" OOT_SERIES="${series}" OOT_RELEASE="$(cat "${w}/release")" \
+      OOT_OFFICIAL_CONFIG="${w}/baseline.config" oot_prepare) \
       >"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
   fi
   # @KSRC@ in MAKE_ARGS: the kernel tree (for Makefiles that probe its headers)
@@ -585,6 +601,15 @@ build_one_oot() {
         make -C "${d}/${SUBDIR}" -j"${OOT_JOBS}" KSRC="${w}/linux" KOBJ="${w}/linux" \
           BUILD_KERNEL="$(cat "${w}/release")" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
           CC="${CROSS}gcc" LD="${CROSS}ld" KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} \
+          >>"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
+        ;;
+      make)
+        # The vendor's own Makefile (it probes the kernel headers and runs
+        # kbuild itself): the toolchain and the release go in from here.
+        local a lv=""
+        for a in "${KMAKE[@]}"; do case "${a}" in LOCALVERSION=*) lv="${a}" ;; esac; done
+        make -C "${d}/${SUBDIR}" -j"${OOT_JOBS}" ARCH=x86_64 CROSS_COMPILE="${CROSS}" \
+          CC="${CROSS}gcc" LD="${CROSS}ld" ${lv:+"${lv}"} KBUILD_MODPOST_WARN=1 ${MAKE_ARGS} \
           >>"${w}/logs/oot-${name}.log" 2>&1 || rc=$?
         ;;
       backport)

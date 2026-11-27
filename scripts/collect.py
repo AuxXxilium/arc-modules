@@ -12,7 +12,11 @@ What ships:
 minus config/<series>/exclude.list. config/<series>/<platform>.list can add
 (+name) or drop (-name) names for one platform.
 
-An out-of-tree module replaces the in-tree module of the same name.
+An out-of-tree module replaces the in-tree module of the same name (but a
+helper built from the target's own kernel source, marked .kernel-source,
+leaves an in-tree build of the same module alone); an in-tree module that
+depends on a replaced one was built against the other interface and does
+not ship.
 
 Every shipped module must have the official vermagic and resolve all its
 undefined symbols from vmlinux, from DSM's own modules (both in the toolkit's
@@ -64,7 +68,13 @@ def main():
     intree = find_kos(o.linux)
     oot, twice = {}, []
     for name in sorted(os.listdir(o.oot)) if os.path.isdir(o.oot) else []:
+        # a helper built from the target's own kernel source (.kernel-source)
+        # is the same code as an in-tree build of that module: the in-tree
+        # one stays where the kernel build made it
+        own = os.path.exists(os.path.join(o.oot, name, '.kernel-source'))
         for m, p in find_kos(os.path.join(o.oot, name)).items():
+            if own and m in intree:
+                continue
             if m in oot:
                 # e.g. Intel's auxiliary bus, which i40e, iavf and ice each
                 # carry: the last source (by name) wins
@@ -123,6 +133,21 @@ def main():
                 if d and d not in ship and d not in exclude and d not in official:
                     ship.add(d)
                     changed = True
+
+    # An in-tree module built against an in-tree module that an out-of-tree
+    # one replaces was compiled against the replaced module's structures
+    # and exports (the kernels have no symbol versions to catch it): it does
+    # not ship. The out-of-tree source brings its own where it has one (OFED's
+    # ib_* and mlx*_ib for the kernel's).
+    replaced_set = set(replaced)
+    for m in sorted(ship):
+        if built[m][1] != 'in-tree':
+            continue
+        deps = (by_norm.get(norm(d)) for d in filter(None, kmod.first(info[m], 'depends').split(',')))
+        hit = sorted({d for d in deps if d in replaced_set})
+        if hit:
+            dropped[m] = 'built against the in-tree ' + ', '.join(hit) + ', which an out-of-tree source replaces'
+    ship -= set(dropped)
 
     # vermagic
     for m in sorted(ship):
