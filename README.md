@@ -89,7 +89,9 @@ python3, make, gcc (host tools), patch, git, flock.
    replaced by the official one, so modules see the official structs even
    where the source is a newer or another platform's (see platforms.conf),
    and `config/<series>/patches/*.patch` are applied (fixes that let an
-   in-tree driver build against Synology's tree).
+   in-tree driver build against Synology's tree, and on 5.10 the device IDs
+   the prebuilt e1000e, igc, i2c-i801 and snd-hda-intel knew that 5.10.55's
+   lack: patches 0007-0010).
    Bools the official kernel has off that something in the fragment selects
    (IRQ_POLL on the nk kernels, or the HDMI/SYNC_FILE a DRM driver needs on
    4.4) are not an error: what selects them is turned off and listed in the
@@ -353,6 +355,7 @@ Kinds of sources here:
   4.1-1.0.2.0 (mlx_compat, the InfiniBand core, mlx4/mlx5) where DSM ships
   it; Microchip smartpqi 2.1.42-011, Motorcomm yt6801, aqc111 (4.4),
   WireGuard and exFAT for 4.4, igc for 4.4, Coral gasket/apex for 4.4,
+  frankcrawford's it87 (where the official kernel has no it87),
   ashmem/binder (anbox, 4.4), AIC8800 aic_load_fw, acpi_call, tty0tty, WCH
   ch35x_38x,
 * kernel drivers built under another name or outside their Kconfig, from

@@ -1,0 +1,24 @@
+snd-hda-intel: Alder Lake-M, -PS and -N HD audio
+
+0x51cc, 0x51cd and 0x54c8, which the prebuilt snd-hda-intel knew, with the
+same driver data as Alder Lake-S/-P (AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE),
+as newer kernels have them.
+
+--- a/sound/pci/hda/hda_intel.c
++++ b/sound/pci/hda/hda_intel.c
+@@ -2525,6 +2525,15 @@
+ 	/* Alderlake-P */
+ 	{ PCI_DEVICE(0x8086, 0x51c8),
+ 	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},
++	/* Alderlake-M */
++	{ PCI_DEVICE(0x8086, 0x51cc),
++	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},
++	/* Alderlake-PS */
++	{ PCI_DEVICE(0x8086, 0x51cd),
++	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},
++	/* Alderlake-N */
++	{ PCI_DEVICE(0x8086, 0x54c8),
++	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},
+ 	/* Elkhart Lake */
+ 	{ PCI_DEVICE(0x8086, 0x4b55),
+ 	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},

@@ -1,0 +1,63 @@
+e1000e: the I219 LOMs the prebuilt e1000e knew after Meteor Lake
+
+The prebuilt set's 5.10 e1000e was a newer driver (RR's, with
+e1000_pch_mtp_info) and bound these I219 IDs, which Synology's 5.10.55
+e1000e does not have: Lunar Lake 0x550E-0x5511, Raptor Lake 0x0DC5-0x0DC8,
+Arrow Lake 0x57A0/0x57A1, Panther Lake 0x57B3-0x57B8, Nova Lake
+0x57B9/0x57BA. 5.10.55 runs Tiger Lake, Alder Lake and Meteor Lake on
+board_pch_cnp (it has no later board), and so do these.
+
+--- a/drivers/net/ethernet/intel/e1000e/hw.h
++++ b/drivers/net/ethernet/intel/e1000e/hw.h
+@@ -106,6 +106,24 @@
+ #define E1000_DEV_ID_PCH_MTP_I219_V18		0x550B
+ #define E1000_DEV_ID_PCH_MTP_I219_LM19		0x550C
+ #define E1000_DEV_ID_PCH_MTP_I219_V19		0x550D
++#define E1000_DEV_ID_PCH_LNP_I219_LM20		0x550E
++#define E1000_DEV_ID_PCH_LNP_I219_V20		0x550F
++#define E1000_DEV_ID_PCH_LNP_I219_LM21		0x5510
++#define E1000_DEV_ID_PCH_LNP_I219_V21		0x5511
++#define E1000_DEV_ID_PCH_RPL_I219_LM23		0x0DC5
++#define E1000_DEV_ID_PCH_RPL_I219_V23		0x0DC6
++#define E1000_DEV_ID_PCH_RPL_I219_LM22		0x0DC7
++#define E1000_DEV_ID_PCH_RPL_I219_V22		0x0DC8
++#define E1000_DEV_ID_PCH_ARL_I219_LM24		0x57A0
++#define E1000_DEV_ID_PCH_ARL_I219_V24		0x57A1
++#define E1000_DEV_ID_PCH_PTP_I219_LM25		0x57B3
++#define E1000_DEV_ID_PCH_PTP_I219_V25		0x57B4
++#define E1000_DEV_ID_PCH_PTP_I219_LM26		0x57B5
++#define E1000_DEV_ID_PCH_PTP_I219_V26		0x57B6
++#define E1000_DEV_ID_PCH_PTP_I219_LM27		0x57B7
++#define E1000_DEV_ID_PCH_PTP_I219_V27		0x57B8
++#define E1000_DEV_ID_NVL_I219_LM29		0x57B9
++#define E1000_DEV_ID_NVL_I219_V29		0x57BA
+ 
+ #define E1000_REVISION_4	4
+ 
+--- a/drivers/net/ethernet/intel/e1000e/netdev.c
++++ b/drivers/net/ethernet/intel/e1000e/netdev.c
+@@ -7851,6 +7851,24 @@
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_MTP_I219_V18), board_pch_cnp },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_MTP_I219_LM19), board_pch_cnp },
+ 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_MTP_I219_V19), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_LNP_I219_LM20), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_LNP_I219_V20), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_LNP_I219_LM21), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_LNP_I219_V21), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_RPL_I219_LM23), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_RPL_I219_V23), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_RPL_I219_LM22), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_RPL_I219_V22), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_ARL_I219_LM24), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_ARL_I219_V24), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_PTP_I219_LM25), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_PTP_I219_V25), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_PTP_I219_LM26), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_PTP_I219_V26), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_PTP_I219_LM27), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_PTP_I219_V27), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_NVL_I219_LM29), board_pch_cnp },
++	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_NVL_I219_V29), board_pch_cnp },
+ 
+ 	{ 0, 0, 0, 0, 0, 0, 0 }	/* terminate list */
+ };

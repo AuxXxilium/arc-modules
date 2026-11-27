@@ -1,0 +1,39 @@
+igc: I226-K (0x3102) and I226-LMvP (0x5503)
+
+The prebuilt set's 5.10 igc knew them; Synology's 5.10.55 igc stops at
+I226-IT and the blank-NVM IDs. Both are I226 parts the driver handles like
+the other I225/I226 (mac type igc_i225, board_base), as newer kernels do.
+
+--- a/drivers/net/ethernet/intel/igc/igc_base.c
++++ b/drivers/net/ethernet/intel/igc/igc_base.c
+@@ -221,6 +221,8 @@
+ 	case IGC_DEV_ID_I221_V:
+ 	case IGC_DEV_ID_I226_BLANK_NVM:
+ 	case IGC_DEV_ID_I225_BLANK_NVM:
++	case IGC_DEV_ID_I226_K:
++	case IGC_DEV_ID_I226_LMVP:
+ 		mac->type = igc_i225;
+ 		break;
+ 	default:
+--- a/drivers/net/ethernet/intel/igc/igc_hw.h
++++ b/drivers/net/ethernet/intel/igc/igc_hw.h
+@@ -30,6 +30,8 @@
+ #define IGC_DEV_ID_I221_V			0x125E
+ #define IGC_DEV_ID_I226_BLANK_NVM		0x125F
+ #define IGC_DEV_ID_I225_BLANK_NVM		0x15FD
++#define IGC_DEV_ID_I226_K			0x3102
++#define IGC_DEV_ID_I226_LMVP			0x5503
+ 
+ /* Function pointers for the MAC. */
+ struct igc_mac_operations {
+--- a/drivers/net/ethernet/intel/igc/igc_main.c
++++ b/drivers/net/ethernet/intel/igc/igc_main.c
+@@ -53,6 +53,8 @@
+ 	{ PCI_VDEVICE(INTEL, IGC_DEV_ID_I221_V), board_base },
+ 	{ PCI_VDEVICE(INTEL, IGC_DEV_ID_I226_BLANK_NVM), board_base },
+ 	{ PCI_VDEVICE(INTEL, IGC_DEV_ID_I225_BLANK_NVM), board_base },
++	{ PCI_VDEVICE(INTEL, IGC_DEV_ID_I226_K), board_base },
++	{ PCI_VDEVICE(INTEL, IGC_DEV_ID_I226_LMVP), board_base },
+ 	/* required last entry */
+ 	{0, }
+ };
