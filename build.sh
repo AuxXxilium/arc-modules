@@ -547,7 +547,9 @@ build_oot() {
     rc="$(cat "${w}/oot-report.d/${name}.rc" 2>/dev/null || echo 1)"
     if [ "${rc}" != 0 ]; then
       failed+=("${name}")
-      grep -q "FAILED" "${w}/oot-report.d/${name}" 2>/dev/null         || echo "${name}: FAILED (rc ${rc}), see the target's log" >>"${w}/oot-report.d/${name}"
+      if ! grep -q "FAILED" "${w}/oot-report.d/${name}" 2>/dev/null; then
+        echo "${name}: FAILED (rc ${rc}), see the target's log" >>"${w}/oot-report.d/${name}"
+      fi
     fi
     [ -f "${w}/oot-report.d/${name}" ] && cat "${w}/oot-report.d/${name}" >>"${w}/oot-report.txt"
   done
@@ -567,10 +569,14 @@ build_one_oot() {
   # module.conf variables
   local SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_STRIP=1 FETCH_INNER="" FETCH_UA="" SUBDIR="." MAKE_ARGS="" KERNEL_FILES=""
   local GIT_URL="" GIT_COMMIT="" BACKPORT_DEFCONFIG="" UNLESS_OFFICIAL="" IF_OFFICIAL="" PLATFORMS="" FILES_FROM="" BUILD="kbuild"
+  local INSTALL_DIR=""
   unset -f oot_prepare 2>/dev/null || true
   # shellcheck source=/dev/null
   . "${s}/module.conf"
   [ -f "${s}/module-${series}.conf" ] && . "${s}/module-${series}.conf"
+  # INSTALL_DIR (e.g. update): the modules ship in that folder of the
+  # package, a second set next to the top level one (see collect_subdirs)
+  [ -n "${INSTALL_DIR}" ] && d="${w}/oot-${INSTALL_DIR}/${name}"
   [[ " ${SERIES} " == *" ${series} "* ]] || return 0
   if [ -n "${PLATFORMS}" ] && [[ " ${PLATFORMS} " != *" ${T_PLATFORM[${t}]} "* ]]; then
     return 0
@@ -711,6 +717,31 @@ collect() {
     --nm "${CROSS}nm" --strip "${CROSS}strip" \
     --release "$(cat "${w}/release")" --out "${dst}" >"${w}/collect-report.txt" \
     || { tail -20 "${w}/collect-report.txt" >&2; die "${t}: collect failed"; }
+  collect_subdirs "${t}" "${w}" "${dst}"
+}
+
+# Out-of-tree sources with an INSTALL_DIR ship in that folder of the package
+# (update/: arc's loader takes a module from there before the top level one
+# of the same name): every module they build, checked like the rest
+# (vermagic, no export vmlinux has, every symbol resolved by vmlinux, DSM's
+# own modules, the folder itself or a top level module it does not shadow).
+collect_subdirs() {
+  local t="$1" w="$2" dst="$3" sd sub
+  for sd in "${w}"/oot-*/; do
+    [ -d "${sd}" ] || continue
+    sub="$(basename "${sd}")"; sub="${sub#oot-}"
+    [ "${sub}" = "report.d" ] && continue
+    {
+      echo
+      echo "## ${sub}/"
+      python3 -I "${ROOT}/scripts/collect.py" \
+        --linux "${w}/linux" --oot "${sd%/}" --toolkit "${w}/toolkit" \
+        --official-list /dev/null \
+        --exclude-list "${ROOT}/config/$(series_of "${T_KVER[${t}]}")/exclude.list" \
+        --platform-list /dev/null --nm "${CROSS}nm" --strip "${CROSS}strip" \
+        --release "$(cat "${w}/release")" --out "${dst}/${sub}" --subdir-of "${dst}"
+    } >>"${w}/collect-report.txt" || { tail -20 "${w}/collect-report.txt" >&2; die "${t}: collect of ${sub}/ failed"; }
+  done
 }
 
 report() {

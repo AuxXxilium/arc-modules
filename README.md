@@ -50,7 +50,8 @@ Options:
 Output, per target:
 
 * `output/modules/<target>/*.ko`: the same layout as `modules/<target>/` on
-  the release branches (flat, stripped of debug info),
+  the release branches (flat, stripped of debug info; geminilakenk also has
+  `update/`, as there),
 * `output/reports/<target>.txt`: configuration report, out-of-tree results,
   every shipped module with its origin and version, every dropped module with
   the reason, and the comparison with `-r`,
@@ -219,13 +220,19 @@ warning. No real hardware was used.
   definitions change nothing it shares; the symbol check proves nothing
   of it needs vmlinux code the official kernel lacks. amdgpu asks the
   power-supply class whether the system is on AC (src/power_supply).
-* **geminilakenk**: DRM, DMA_SHARED_BUFFER and i915 are official there. The
-  backport is not built (its dma-buf would clash with vmlinux's); drm,
-  drm_kms_helper and i915 are rebuilt from the same source and ship
-  (`config/5.10/geminilakenk.list`), drm with the GEM shmem/CMA helpers
-  virtio-gpu, udl and arcpgu need. amdgpu is built in-tree
-  (`config/5.10/geminilakenk.config`, display core off), with ttm,
-  gpu-sched, the ttm helper, bochs-drm, virtio-gpu, udl and arcpgu.
+* **geminilakenk**: DRM, DMA_SHARED_BUFFER and i915 are official there. At
+  the top level drm, drm_kms_helper and i915 are rebuilt from the same
+  source and ship (`config/5.10/geminilakenk.list`), drm with the GEM
+  shmem/CMA helpers virtio-gpu, udl and arcpgu need. amdgpu is built
+  in-tree (`config/5.10/geminilakenk.config`, display core off, with SI and
+  CIK), with ttm, gpu-sched, the ttm helper, bochs-drm, virtio-gpu, udl and
+  arcpgu. The backport's i915 stack (dmabuf, i915-compat, drm, drm_kms_helper,
+  drm_buddy, drm_display_helper, ttm, intel-gtt, i915, mei) ships in
+  `update/` as in the prebuilt set (`src/drm-backport-update`): arc's loader
+  takes a module from there first, so GPUs the 5.10 i915 does not know
+  (Alder Lake-N/-P, Raptor, Meteor/Arrow Lake, DG2) work. Its dma-buf
+  exports are prefixed (dmabufbkpt_), and the intel_gmch_probe/remove
+  vmlinux has stay vmlinux's.
 * **4.4**: only apollolake and geminilake had i915 in the prebuilt set, and
   there DRM and i915 are official; the official i915/drm are rebuilt from
   the same GPL source and official .config and ship through official.list,
@@ -266,7 +273,7 @@ never changed. What is left of the prebuilt set and is not built here:
 | libphy | r1000, v1000 | built in (PHYLIB=y) |
 | i2c-i801 | geminilakenk, icelaked | built in (I2C_I801=y) |
 | check_signature, dmabuf | geminilakenk | built in (CHECK_SIGNATURE=y, DMA_SHARED_BUFFER=y) |
-| drm_buddy, drm_display_helper | geminilakenk | modules of the 6.x DRM backport only; geminilakenk's 5.10 drm.ko/drm_kms_helper.ko, shipped here, hold that code |
+| drm_buddy, drm_display_helper | geminilakenk (top level) | modules of the 6.x DRM backport only; they ship in `update/` with it, geminilakenk's 5.10 drm.ko/drm_kms_helper.ko at the top level hold that code |
 | qedr | broadwell*, purley | DSM's own (Synology-signed 8.33.9.0, built on DSM's Mellanox OFED): qed/qede ship here from the same 8.33.9.0 source and OFED from the same 4.1 commit, so DSM's qedr loads on them; FastLinQ's qedr Makefile cannot build against OFED 4.1 |
 
 A module built into vmlinux cannot also load as a module (its exports or
@@ -333,6 +340,7 @@ Each `src/<name>/module.conf` is a shell fragment:
 | `BUILD` | `kbuild` (default: `make M=`), `intel` (Intel's own `common.mk`, which generates `kcompat_generated_defs.h` from the kernel headers first), `make` (the vendor's own Makefile, given the toolchain and release; FastLinQ, OFED) or `backport` (a Linux backports tree: `make BACKPORT_DEFCONFIG`, then `make modules`) |
 | `UNLESS_OFFICIAL` | symbols; the source is skipped where the official kernel sets one of them |
 | `IF_OFFICIAL` | symbols; the source is skipped where the official kernel lacks one of them |
+| `INSTALL_DIR` | a folder of the package (`update`) the modules ship in instead of the top level, collected and checked as a set of their own |
 | `PLATFORMS` | build only for these platforms |
 | `FILES_FROM` | use another recipe's vendored folder (`src/<FILES_FROM>`) |
 | `KERNEL_FILES` | files (shell patterns) copied from the target's kernel source (a renamed in-tree driver, a helper) |

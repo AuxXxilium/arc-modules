@@ -63,9 +63,13 @@ def main():
     for a in ('linux', 'oot', 'toolkit', 'official-list', 'exclude-list', 'platform-list',
               'nm', 'strip', 'release', 'out'):
         ap.add_argument('--' + a, required=True)
+    # a second set for a folder of the package (update/): only the
+    # out-of-tree modules, all of them; the top level modules of the given
+    # folder count as provided unless this set shadows them
+    ap.add_argument('--subdir-of')
     o = ap.parse_args()
 
-    intree = find_kos(o.linux)
+    intree = {} if o.subdir_of else find_kos(o.linux)
     oot, twice = {}, []
     for name in sorted(os.listdir(o.oot)) if os.path.isdir(o.oot) else []:
         # a helper built from the target's own kernel source (.kernel-source)
@@ -111,6 +115,11 @@ def main():
             continue
         if origin.startswith('oot:') or m not in official or m in keep_official:
             ship.add(m)
+    top = {}
+    if o.subdir_of:
+        top = {m: p for m, p in find_kos(o.subdir_of).items()
+               if os.path.abspath(os.path.dirname(p)) == os.path.abspath(o.subdir_of)
+               and norm(m) not in {norm(x) for x in built}}
 
     info = {m: kmod.modinfo(built[m][0]) for m in built}
     syms = {}
@@ -163,9 +172,13 @@ def main():
             dropped[m] = 'exports symbols vmlinux has: ' + ' '.join(dup[:8])
     ship -= set(dropped)
 
+    top_exports = set()
+    for m, p in top.items():
+        top_exports |= kmod.symbols(p, o.nm)[1]
+
     # symbol resolution, to a fixed point
     while True:
-        provided = vmlinux | dsm_mods
+        provided = vmlinux | dsm_mods | top_exports
         for m in ship:
             provided |= symbols(m)[1]
         bad = {}
