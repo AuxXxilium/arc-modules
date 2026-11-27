@@ -1,0 +1,2 @@
+obj-m += phy-lgm-usb.o
+ccflags-y += -DCONFIG_USB_PHY_MODULE=1

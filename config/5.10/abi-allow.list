@@ -84,3 +84,18 @@ CONFIG_SYNO_NET_EMULEX_HIDE_VF
 CONFIG_DRM_TTM_DMA_PAGE_POOL
 CONFIG_DRM_AMD_*
 CONFIG_DRM_AMDGPU_*
+# Off in the official kernel, built as modules of their own here (src/
+# power_supply, devlink, page_pool, dimlib), the way the prebuilt set had
+# them: no struct vmlinux shares with modules depends on them, and vmlinux
+# itself only has the headers' stubs for them. On, so the drivers built
+# here use those modules.
+CONFIG_POWER_SUPPLY
+CONFIG_POWER_SUPPLY_HWMON
+CONFIG_NET_DEVLINK
+CONFIG_PAGE_POOL
+CONFIG_DIMLIB
+# geminilakenk: helpers inside drm.ko/drm_kms_helper.ko, which ship rebuilt
+# there (config/5.10/geminilakenk.list) for virtio-gpu, udl and arcpgu
+CONFIG_DRM_GEM_SHMEM_HELPER
+CONFIG_DRM_GEM_CMA_HELPER
+CONFIG_DRM_KMS_CMA_HELPER

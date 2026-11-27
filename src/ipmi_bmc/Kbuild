@@ -1,0 +1,1 @@
+obj-m += kcs_bmc.o kcs_bmc_aspeed.o kcs_bmc_npcm7xx.o bt-bmc.o

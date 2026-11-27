@@ -1,0 +1,2 @@
+obj-m += power_supply.o
+power_supply-y := power_supply_core.o power_supply_sysfs.o power_supply_leds.o power_supply_hwmon.o

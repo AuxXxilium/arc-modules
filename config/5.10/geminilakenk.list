@@ -1,0 +1,5 @@
+# official modules that ship rebuilt on geminilakenk (see geminilakenk.config)
++drm
++drm_kms_helper
++drm_panel_orientation_quirks
++i915

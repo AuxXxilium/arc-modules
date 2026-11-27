@@ -3,8 +3,9 @@
 # prebuilt packages carried (modules/<target>/ on the dev branch). A name a
 # platform's kernel does not have, or has built in, is simply skipped.
 # Not here: drm, drm_kms_helper, drm_panel_orientation_quirks, i915. Only
-# geminilakenk has them officially, and there DSM's own load (a rebuild
-# would clash with DSM's i915); elsewhere src/drm-backport ships its own.
+# geminilakenk has them officially; they ship there through
+# geminilakenk.list (rebuilt with the GEM helpers the virtual and USB display
+# drivers need); elsewhere src/drm-backport ships its own.
 acpi-cpufreq
 adt7475
 asm116xfwdl

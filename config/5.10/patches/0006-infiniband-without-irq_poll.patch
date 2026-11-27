@@ -1,0 +1,109 @@
+RDMA: the InfiniBand core without irq_poll
+
+INFINIBAND selects IRQ_POLL, a bool whose softirq lives in vmlinux;
+geminilakenk, r1000nk and v1000nk are built without it, so the whole
+InfiniBand stack (ib_core and every RDMA driver on it) was turned off there.
+Without IRQ_POLL a CQ asked for softirq polling is polled from the
+workqueue instead (the core's other mode), and the drivers' softirq-only
+paths are left out. Kernels with IRQ_POLL are unchanged.
+
+--- a/drivers/infiniband/Kconfig
++++ b/drivers/infiniband/Kconfig
+@@ -6,7 +6,6 @@
+ 	depends on INET
+ 	depends on m || IPV6 != m
+ 	depends on !ALPHA
+-	select IRQ_POLL
+ 	select DIMLIB
+ 	help
+ 	  Core support for InfiniBand (IB).  Make sure to also select
+--- a/drivers/infiniband/core/cq.c
++++ b/drivers/infiniband/core/cq.c
+@@ -149,6 +149,7 @@
+ 	WARN_ONCE(1, "got unsolicited completion for CQ 0x%p\n", cq);
+ }
+ 
++#if IS_ENABLED(CONFIG_IRQ_POLL)
+ static int ib_poll_handler(struct irq_poll *iop, int budget)
+ {
+ 	struct ib_cq *cq = container_of(iop, struct ib_cq, iop);
+@@ -175,6 +176,7 @@
+ 	trace_cq_schedule(cq);
+ 	irq_poll_sched(&cq->iop);
+ }
++#endif /* CONFIG_IRQ_POLL */
+ 
+ static void ib_cq_poll_work(struct work_struct *work)
+ {
+@@ -227,6 +229,14 @@
+ 
+ 	cq->device = dev;
+ 	cq->cq_context = private;
++#if !IS_ENABLED(CONFIG_IRQ_POLL)
++	/*
++	 * arc-modules: irq_poll (a softirq of vmlinux) is not in this kernel:
++	 * a softirq CQ is polled from the workqueue instead.
++	 */
++	if (poll_ctx == IB_POLL_SOFTIRQ)
++		poll_ctx = IB_POLL_WORKQUEUE;
++#endif
+ 	cq->poll_ctx = poll_ctx;
+ 	atomic_set(&cq->usecnt, 0);
+ 	cq->comp_vector = comp_vector;
+@@ -248,12 +258,14 @@
+ 	case IB_POLL_DIRECT:
+ 		cq->comp_handler = ib_cq_completion_direct;
+ 		break;
++#if IS_ENABLED(CONFIG_IRQ_POLL)
+ 	case IB_POLL_SOFTIRQ:
+ 		cq->comp_handler = ib_cq_completion_softirq;
+ 
+ 		irq_poll_init(&cq->iop, IB_POLL_BUDGET_IRQ, ib_poll_handler);
+ 		ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
+ 		break;
++#endif
+ 	case IB_POLL_WORKQUEUE:
+ 	case IB_POLL_UNBOUND_WORKQUEUE:
+ 		cq->comp_handler = ib_cq_completion_workqueue;
+@@ -328,9 +340,11 @@
+ 	switch (cq->poll_ctx) {
+ 	case IB_POLL_DIRECT:
+ 		break;
++#if IS_ENABLED(CONFIG_IRQ_POLL)
+ 	case IB_POLL_SOFTIRQ:
+ 		irq_poll_disable(&cq->iop);
+ 		break;
++#endif
+ 	case IB_POLL_WORKQUEUE:
+ 	case IB_POLL_UNBOUND_WORKQUEUE:
+ 		cancel_work_sync(&cq->work);
+--- a/drivers/infiniband/hw/mlx4/qp.c
++++ b/drivers/infiniband/hw/mlx4/qp.c
+@@ -4381,10 +4381,12 @@
+ 		if (triggered) {
+ 			/* Wait for any scheduled/running task to be ended */
+ 			switch (cq->poll_ctx) {
++#if IS_ENABLED(CONFIG_IRQ_POLL)
+ 			case IB_POLL_SOFTIRQ:
+ 				irq_poll_disable(&cq->iop);
+ 				irq_poll_enable(&cq->iop);
+ 				break;
++#endif
+ 			case IB_POLL_WORKQUEUE:
+ 				cancel_work_sync(&cq->work);
+ 				break;
+--- a/drivers/infiniband/hw/mlx5/qp.c
++++ b/drivers/infiniband/hw/mlx5/qp.c
+@@ -5334,10 +5334,12 @@
+ 		if (triggered) {
+ 			/* Wait for any scheduled/running task to be ended */
+ 			switch (cq->poll_ctx) {
++#if IS_ENABLED(CONFIG_IRQ_POLL)
+ 			case IB_POLL_SOFTIRQ:
+ 				irq_poll_disable(&cq->iop);
+ 				irq_poll_enable(&cq->iop);
+ 				break;
++#endif
+ 			case IB_POLL_WORKQUEUE:
+ 				cancel_work_sync(&cq->work);
+ 				break;
