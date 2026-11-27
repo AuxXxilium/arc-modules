@@ -1,0 +1,12 @@
+
+/* arc-modules: as a module, the platform device goes again on unload */
+static void __exit arc_pcspkr_exit(void)
+{
+	struct device *dev = bus_find_device_by_name(&platform_bus_type, NULL, "pcspkr");
+
+	if (dev) {
+		platform_device_unregister(to_platform_device(dev));
+		put_device(dev);
+	}
+}
+module_exit(arc_pcspkr_exit);

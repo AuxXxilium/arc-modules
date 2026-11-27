@@ -1,0 +1,8 @@
+
+/* arc-modules: devlink as a module can be unloaded (when no driver uses it) */
+static void __exit arc_devlink_exit(void)
+{
+	unregister_pernet_subsys(&devlink_pernet_ops);
+	genl_unregister_family(&devlink_nl_family);
+}
+module_exit(arc_devlink_exit);

@@ -1,0 +1,13 @@
+
+/*
+ * arc-modules: ashmem as a module can be unloaded; the device holds the
+ * module while anything has it open (ashmem_fops.owner).
+ */
+static void __exit arc_ashmem_exit(void)
+{
+	unregister_shrinker(&ashmem_shrinker);
+	misc_deregister(&ashmem_misc);
+	kmem_cache_destroy(ashmem_range_cachep);
+	kmem_cache_destroy(ashmem_area_cachep);
+}
+module_exit(arc_ashmem_exit);

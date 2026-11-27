@@ -1,0 +1,21 @@
+
+/*
+ * arc-modules: binder as a module can be unloaded; the devices hold the
+ * module while anything has them open (binder_fops.owner).
+ */
+void arc_binder_alloc_shrinker_exit(void);
+
+static void __exit arc_binder_exit(void)
+{
+	struct binder_device *device;
+	struct hlist_node *tmp;
+
+	hlist_for_each_entry_safe(device, tmp, &binder_devices, hlist) {
+		misc_deregister(&device->miscdev);
+		hlist_del(&device->hlist);
+		kfree(device);
+	}
+	debugfs_remove_recursive(binder_debugfs_dir_entry_root);
+	arc_binder_alloc_shrinker_exit();
+}
+module_exit(arc_binder_exit);
