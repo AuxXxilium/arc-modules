@@ -1,0 +1,20 @@
+pmbus: export syno_get_pmbus_status() only where it is built
+
+Synology's pmbus_core.c defines syno_get_pmbus_status() under
+CONFIG_SYNO_PMBUS_FEATURES but exports it unconditionally, so pmbus_core
+does not compile on the kernels without that option (the official ones are
+built without PMBUS, so nothing there needs it). The export now sits under
+the same option as the function.
+
+--- a/drivers/hwmon/pmbus/pmbus_core.c
++++ b/drivers/hwmon/pmbus/pmbus_core.c
+@@ -2095,7 +2095,9 @@
+ 	return 0;
+ }
+ EXPORT_SYMBOL_GPL(pmbus_do_remove);
++#ifdef CONFIG_SYNO_PMBUS_FEATURES
+ EXPORT_SYMBOL(syno_get_pmbus_status);
++#endif /* CONFIG_SYNO_PMBUS_FEATURES */
+ 
+ MODULE_AUTHOR("Guenter Roeck");
+ MODULE_DESCRIPTION("PMBus core driver");

@@ -1,0 +1,113 @@
+sata_sil: reach Synology's libata hooks by name
+
+ATA_BASE_SHT puts Synology's host hooks (syno_libata_index_get and the
+deep-sleep/power ones) into the host template. The official vmlinux has
+them but does not export them, so a modular sata_sil had unresolved symbols
+(the prebuilt one too). The driver now looks them up with
+kallsyms_lookup_name() at load time and refuses to load if one of the hooks
+this kernel's ATA_BASE_SHT uses is missing.
+
+--- a/drivers/ata/sata_sil.c
++++ b/drivers/ata/sata_sil.c
+@@ -34,6 +34,17 @@
+  *
+  */
+ 
++/*
++ * arc-modules: ATA_BASE_SHT fills in Synology's host hooks (syno_libata_*),
++ * which live in the official vmlinux but are not exported there, so a
++ * modular sata_sil could not load. The module looks them up by name when it
++ * loads and calls them through these wrappers.
++ */
++#define syno_libata_index_get arc_syno_libata_index_get
++#define syno_libata_port_power_ctl arc_syno_libata_port_power_ctl
++#define syno_libata_set_deep_sleep arc_syno_libata_set_deep_sleep
++#define syno_libata_poweroff_task arc_syno_libata_poweroff_task
++#define syno_libata_support_pwr_ctl arc_syno_libata_support_pwr_ctl
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/pci.h>
+@@ -44,6 +55,60 @@
+ #include <scsi/scsi_host.h>
+ #include <linux/libata.h>
+ #include <linux/dmi.h>
++
++#include <linux/kallsyms.h>
++
++static int (*arc_p_index_get)(struct Scsi_Host *, uint, uint, uint);
++static int (*arc_p_port_power_ctl)(struct Scsi_Host *, u8);
++static int (*arc_p_set_deep_sleep)(struct Scsi_Host *, const u8);
++static int (*arc_p_poweroff_task)(struct Scsi_Host *);
++static int (*arc_p_support_pwr_ctl)(struct Scsi_Host *);
++
++int arc_syno_libata_index_get(struct Scsi_Host *host, uint channel, uint id, uint lun)
++{
++	return arc_p_index_get(host, channel, id, lun);
++}
++
++int arc_syno_libata_port_power_ctl(struct Scsi_Host *host, u8 pwrOp)
++{
++	return arc_p_port_power_ctl(host, pwrOp);
++}
++
++int arc_syno_libata_set_deep_sleep(struct Scsi_Host *host, const u8 blSet)
++{
++	return arc_p_set_deep_sleep(host, blSet);
++}
++
++int arc_syno_libata_poweroff_task(struct Scsi_Host *host)
++{
++	return arc_p_poweroff_task(host);
++}
++
++int arc_syno_libata_support_pwr_ctl(struct Scsi_Host *host)
++{
++	return arc_p_support_pwr_ctl(host);
++}
++
++/* the hooks ATA_BASE_SHT uses in this kernel must all be found */
++static int arc_syno_hooks_resolve(void)
++{
++#if defined(CONFIG_SYNO_FIXED_DISK_NAME) || defined(CONFIG_SYNO_PORT_MAPPING_V2)
++	arc_p_index_get = (void *)kallsyms_lookup_name("syno_libata_index_get");
++	if (!arc_p_index_get)
++		return -ENOENT;
++#endif
++#ifdef CONFIG_SYNO_SATA_IRQ_OFF
++	arc_p_port_power_ctl = (void *)kallsyms_lookup_name("syno_libata_port_power_ctl");
++	arc_p_set_deep_sleep = (void *)kallsyms_lookup_name("syno_libata_set_deep_sleep");
++	arc_p_poweroff_task = (void *)kallsyms_lookup_name("syno_libata_poweroff_task");
++	arc_p_support_pwr_ctl = (void *)kallsyms_lookup_name("syno_libata_support_pwr_ctl");
++	if (!arc_p_port_power_ctl || !arc_p_set_deep_sleep ||
++	    !arc_p_poweroff_task || !arc_p_support_pwr_ctl)
++		return -ENOENT;
++#endif
++	return 0;
++}
++
+ 
+ #define DRV_NAME	"sata_sil"
+ #define DRV_VERSION	"2.4"
+@@ -824,4 +889,21 @@
+ }
+ #endif
+ 
+-module_pci_driver(sil_pci_driver);
++static int __init sil_init(void)
++{
++	int rc = arc_syno_hooks_resolve();
++
++	if (rc) {
++		pr_err("sata_sil: Synology libata hooks not found in this kernel\n");
++		return rc;
++	}
++	return pci_register_driver(&sil_pci_driver);
++}
++
++static void __exit sil_exit(void)
++{
++	pci_unregister_driver(&sil_pci_driver);
++}
++
++module_init(sil_init);
++module_exit(sil_exit);

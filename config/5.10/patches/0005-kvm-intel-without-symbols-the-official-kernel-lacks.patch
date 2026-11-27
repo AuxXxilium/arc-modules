@@ -1,0 +1,56 @@
+KVM: VMX: build without the symbols only a KVM_INTEL kernel exports
+
+The AMD platforms' official kernels (epyc7002, epyc7003, r1000nk, v1000nk)
+are built without KVM_INTEL, so vmlinux has no asm_exc_nmi_noist and does
+not export l1tf_mitigation; kvm-intel built for them could not load, and
+these images run on Intel CPUs too. NMI exits now go through the NMI IDT
+gate (INT 2, KVM's way before 5.3), and the L1TF mode starts from the
+kernel's default.
+
+--- a/arch/x86/kvm/vmx/vmx.c
++++ b/arch/x86/kvm/vmx/vmx.c
+@@ -63,6 +63,16 @@
+ #include "vmcs12.h"
+ #include "vmx.h"
+ #include "x86.h"
++
++/*
++ * arc-modules: bugs.c exports l1tf_mitigation only to a kernel built with
++ * KVM_INTEL, which the official one is not; the kernel's default (flush,
++ * L1TF_MITIGATION_FLUSH) is assumed. kvm_intel.vmentry_l1d_flush= still
++ * sets the mode.
++ */
++#define l1tf_mitigation arc_l1tf_mitigation
++static enum l1tf_mitigations arc_l1tf_mitigation = L1TF_MITIGATION_FLUSH;
++
+ 
+ MODULE_AUTHOR("Qumranet");
+ MODULE_LICENSE("GPL");
+@@ -6365,7 +6375,6 @@
+ 
+ static void handle_exception_nmi_irqoff(struct vcpu_vmx *vmx)
+ {
+-	const unsigned long nmi_entry = (unsigned long)asm_exc_nmi_noist;
+ 	u32 intr_info = vmx_get_intr_info(&vmx->vcpu);
+ 
+ 	/* if exit due to PF check for async PF */
+@@ -6375,8 +6384,17 @@
+ 	else if (is_machine_check(intr_info))
+ 		kvm_machine_check();
+ 	/* We need to handle NMIs before interrupts are enabled */
+-	else if (is_nmi(intr_info))
+-		handle_interrupt_nmi_irqoff(&vmx->vcpu, nmi_entry);
++	else if (is_nmi(intr_info)) {
++		/*
++		 * arc-modules: the non-IST NMI entry (asm_exc_nmi_noist) exists
++		 * only in kernels built with KVM_INTEL; the official one is not.
++		 * The NMI goes through its IDT gate instead (INT 2), as KVM did
++		 * before Linux 5.3.
++		 */
++		kvm_before_interrupt(&vmx->vcpu);
++		asm("int $2");
++		kvm_after_interrupt(&vmx->vcpu);
++	}
+ }
+ 
+ static void handle_external_interrupt_irqoff(struct kvm_vcpu *vcpu)

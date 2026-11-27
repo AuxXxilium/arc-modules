@@ -1,0 +1,37 @@
+scsi_transport_fc: no FC netlink events where the kernel has no SCSI_NETLINK
+
+SCSI_FC_ATTRS selects SCSI_NETLINK, a bool inside scsi_mod; kernels built
+without it have no scsi_nl_sock, so a modular scsi_transport_fc (and libfc,
+fcoe and the FC HBA drivers on it) could not load there. The select goes;
+without SCSI_NETLINK the transport has no netlink socket and
+fc_host_post_event()/fc_host_post_vendor_event() report -ENOENT, the path
+they already take before the socket exists. Kernels with SCSI_NETLINK keep
+their events.
+
+--- a/drivers/scsi/Kconfig
++++ b/drivers/scsi/Kconfig
+@@ -261,7 +261,6 @@
+ config SCSI_FC_ATTRS
+ 	tristate "FiberChannel Transport Attributes"
+ 	depends on SCSI && NET
+-	select SCSI_NETLINK
+ 	help
+ 	  If you wish to export transport-specific information about
+ 	  each attached FiberChannel device to sysfs, say Y.
+--- a/drivers/scsi/scsi_transport_fc.c
++++ b/drivers/scsi/scsi_transport_fc.c
+@@ -39,6 +39,14 @@
+ #include <scsi/scsi_netlink_fc.h>
+ #include <scsi/scsi_bsg_fc.h>
+ #include "scsi_priv.h"
++
++#ifndef CONFIG_SCSI_NETLINK
++/*
++ * arc-modules: no SCSI netlink in this kernel. Without a socket the event
++ * functions below return -ENOENT, as they do before the socket exists.
++ */
++#define scsi_nl_sock ((struct sock *)NULL)
++#endif
+ 
+ static int fc_queue_work(struct Scsi_Host *, struct work_struct *);
+ static void fc_vport_sched_delete(struct work_struct *work);
