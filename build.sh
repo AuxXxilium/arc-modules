@@ -141,8 +141,23 @@ fetch() { # fetch <url> <dest> <key> [user agent]
   cache_lock
   if [ ! -s "${dest}" ]; then
     mkdir -p "$(dirname "${dest}")"
-    log "download ${url}"
-    curl -fL --retry 3 --connect-timeout 30 "${ua[@]}" -o "${dest}.part" "${url}" || { rm -f "${dest}.part"; die "download failed: ${url}"; }
+    # A server can answer 200 with an empty or a wrong body (git.zx2c4.com
+    # did): only a file with the pinned checksum goes into the cache, so a
+    # bad answer never stays there for the next target.
+    local try want have
+    want="$(sha_pinned "${key}")"
+    for try in 1 2 3; do
+      log "download ${url}$([ "${try}" -gt 1 ] && echo " (try ${try})")"
+      rm -f "${dest}.part"
+      if curl -fL --retry 3 --connect-timeout 30 "${ua[@]}" -o "${dest}.part" "${url}" && [ -s "${dest}.part" ]; then
+        have="$(sha256sum "${dest}.part" | awk '{print $1}')"
+        [ -z "${want}" ] || [ "${have}" = "${want}" ] && break
+        warn "${key}: got sha256 ${have}, pinned ${want}"
+      fi
+      rm -f "${dest}.part"
+      sleep $((try * 10))
+    done
+    [ -s "${dest}.part" ] || die "download failed: ${url}"
     mv -f "${dest}.part" "${dest}"
   fi
   cache_unlock
@@ -477,6 +492,32 @@ oot_names() {
   done
 }
 
+fetch_oot_sources() { # fetch_oot_sources "<series> ..."
+  local name series rc=0
+  for name in $(oot_names); do
+    if [ -n "${ONLY_OOT}" ]; then
+      [ "${ONLY_OOT}" = "none" ] && return 0
+      [[ ",${ONLY_OOT}," == *",${name},"* ]] || continue
+    fi
+    for series in $1; do
+      (
+        SERIES="" FETCH_URL="" FETCH_KEY="" FETCH_UA="" GIT_URL="" GIT_COMMIT=""
+        # shellcheck source=/dev/null
+        . "${ROOT}/src/${name}/module.conf"
+        [ -f "${ROOT}/src/${name}/module-${series}.conf" ] && . "${ROOT}/src/${name}/module-${series}.conf"
+        [[ " ${SERIES} " == *" ${series} "* ]] || exit 0
+        if [ -n "${GIT_URL}" ]; then
+          fetch_git "${GIT_URL}" "${GIT_COMMIT}" "${CACHE_DIR}/git/${name}-${GIT_COMMIT}"             || { [ "${STRICT}" -eq 1 ] && die "${name}: cannot fetch ${GIT_URL} (private: needs ARC_GITHUB_TOKEN)"; exit 0; }
+        elif [ -n "${FETCH_URL}" ]; then
+          local key="oot/${FETCH_KEY:-$(basename "${FETCH_URL}")}"
+          fetch "${FETCH_URL}" "${CACHE_DIR}/${key}" "${key}" "${FETCH_UA}"
+        fi
+      ) || rc=1
+    done
+  done
+  return "${rc}"
+}
+
 # The sources are independent of each other: OOT_PARALLEL of them build at
 # once, each into its own folder, log and report line.
 build_oot() {
@@ -495,13 +536,28 @@ build_oot() {
   local n=0
   for name in "${names[@]}"; do
     while [ "$(jobs -rp | wc -l)" -ge "${OOT_PARALLEL}" ]; do wait -n || true; done
-    ( build_one_oot "${t}" "${w}" "${series}" "${name}" "${w}/oot-report.d/${name}" || true ) &
+    # its status is kept; a die() inside (a download) leaves no .rc file
+    ( rc=0; build_one_oot "${t}" "${w}" "${series}" "${name}" "${w}/oot-report.d/${name}" || rc=$?
+      echo "${rc}" >"${w}/oot-report.d/${name}.rc" ) &
     n=$((n + 1))
   done
   wait || true
+  local failed=() rc
   for name in "${names[@]}"; do
+    rc="$(cat "${w}/oot-report.d/${name}.rc" 2>/dev/null || echo 1)"
+    if [ "${rc}" != 0 ]; then
+      failed+=("${name}")
+      grep -q "FAILED" "${w}/oot-report.d/${name}" 2>/dev/null         || echo "${name}: FAILED (rc ${rc}), see the target's log" >>"${w}/oot-report.d/${name}"
+    fi
     [ -f "${w}/oot-report.d/${name}" ] && cat "${w}/oot-report.d/${name}" >>"${w}/oot-report.txt"
   done
+  # --strict: a source that applies to this target and fails (a download, a
+  # private repository without a token, a build error) fails the target, so
+  # a package never goes out silently without its modules
+  if [ ${#failed[@]} -gt 0 ]; then
+    [ "${STRICT}" -eq 1 ] && die "${t}: out-of-tree sources failed: ${failed[*]}"
+    warn "${t}: out-of-tree sources failed: ${failed[*]}"
+  fi
   return 0
 }
 
@@ -799,6 +855,11 @@ main() {
     [ "${T_GPL[${t}]}" = "none" ] && continue
     ( fetch_inputs "${t}" ) || die "${t}: cannot get its inputs"
   done
+  # and the out-of-tree downloads and checkouts of their series, so a server
+  # that fails shows up here and not as a package without its modules
+  local series_sel
+  series_sel="$(for t in "${sel[@]}"; do series_of "${T_KVER[${t}]}"; done | sort -u | xargs)"
+  fetch_oot_sources "${series_sel}" || die "cannot get the out-of-tree sources"
   [ "${FETCH_ONLY}" -eq 1 ] && { log "done: inputs of ${#sel[@]} target(s) in ${CACHE_DIR}"; return 0; }
 
   local start failed=() pid
