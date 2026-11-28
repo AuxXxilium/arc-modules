@@ -128,6 +128,11 @@ python3, make, gcc (host tools), patch, git, flock.
    resolve every undefined symbol from vmlinux (the toolkit's
    `Module.symvers`) or another shipped module; a module that does not is
    dropped and listed in the report with the symbols it lacks.
+   Then `scripts/depends.py` completes each shipped module's `depends=`
+   with the modules that export what it uses (shipped ones, DSM's own):
+   out-of-tree builds do not see the other sources' exports nor, on 5.10,
+   the tree's (a modules-only build writes `modules-only.symvers`), and
+   arc's loader picks a module's companions by modinfo `depends`.
 
 ## Verified (2026-11-27, build host: `./build.sh --strict --tgz all`)
 
@@ -319,8 +324,9 @@ config/<series>/
   abi-allow.list         symbols allowed to go n -> y
   patches/*.patch        fixes applied to the GPL kernel source
 src/<name>/              out-of-tree sources, see below
-scripts/                 configcheck.py, prune.py, collect.py, compare.py,
-                         kmod.py, pin-checksums.sh (pins new downloads)
+scripts/                 configcheck.py, prune.py, collect.py, depends.py,
+                         compare.py, kmod.py, pin-checksums.sh (pins new
+                         downloads)
 ```
 
 ## Out-of-tree sources

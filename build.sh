@@ -718,6 +718,21 @@ collect() {
     --release "$(cat "${w}/release")" --out "${dst}" >"${w}/collect-report.txt" \
     || { tail -20 "${w}/collect-report.txt" >&2; die "${t}: collect failed"; }
   collect_subdirs "${t}" "${w}" "${dst}"
+  complete_depends "${t}" "${w}" "${dst}"
+}
+
+# depends= of every shipped module, completed from the symbols it uses
+# (scripts/depends.py): arc's loader picks companions by modinfo depends.
+complete_depends() {
+  local t="$1" w="$2" dst="$3" sd
+  local args=(--symvers "${w}/toolkit/build/Module.symvers" --nm "${CROSS}nm" --objcopy "${CROSS}objcopy")
+  python3 -I "${ROOT}/scripts/depends.py" --out "${dst}" "${args[@]}" >>"${w}/collect-report.txt" \
+    || die "${t}: completing depends failed"
+  for sd in "${dst}"/*/; do
+    [ -d "${sd}" ] || continue
+    python3 -I "${ROOT}/scripts/depends.py" --out "${dst}" --subdir "$(basename "${sd}")" "${args[@]}" \
+      >>"${w}/collect-report.txt" || die "${t}: completing depends of $(basename "${sd}")/ failed"
+  done
 }
 
 # Out-of-tree sources with an INSTALL_DIR ship in that folder of the package
