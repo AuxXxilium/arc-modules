@@ -1,0 +1,8 @@
+# DSM's own modules this build would add (Synology's config has them off,
+# yet DSM ships its own build: arc-dsm modules/<model>/<ver>/), that the
+# installer does not need, plus what only they use. DSM loads its own.
+-drbd
+-lru_cache
+-vhost
+-vhost_iotlb
+-vhost_net

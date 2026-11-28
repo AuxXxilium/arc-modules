@@ -320,7 +320,9 @@ config/<series>/
   <platform>.config      optional additions for one platform
   official.list          official modules that ship anyway
   exclude.list           modules never shipped
-  <platform>.list        optional: +name / -name for one platform
+  <platform>.list        optional: +name / -name for one platform; the
+                         -names are DSM's own modules (in its PAT, built
+                         outside the GPL tree) the installer does not need
   abi-allow.list         symbols allowed to go n -> y
   patches/*.patch        fixes applied to the GPL kernel source
 src/<name>/              out-of-tree sources, see below
