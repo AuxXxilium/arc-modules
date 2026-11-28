@@ -6,3 +6,32 @@
 -vhost
 -vhost_iotlb
 -vhost_net
+
+# Hardware no DSM box has (Neterion, Intel 82597, Solarflare Falcon, USB 1.1
+# rtl8150, NCR/Symbios and ESP SCSI, SoundBlaster Live, Atom tablet audio,
+# powerline and switch chips, VIA chipset, VGA16), plus what only it uses.
+-am53c974
+-esp_scsi
+-ixgb
+-mlxsw_i2c
+-mlxsw_minimal
+-qca_7k_common
+-qcaspi
+-rtl8150
+-s2io
+-sfc-falcon
+-snd-emu10k1
+-snd-emu10k1-synth
+-snd-emu10k1x
+-snd-emux-synth
+-snd-intel-sst-acpi
+-snd-intel-sst-core
+-snd-seq-midi-emul
+-snd-seq-virmidi
+-snd-soc-acpi
+-snd-soc-acpi-intel-match
+-snd-soc-sst-atom-hifi2-platform
+-snd-util-mem
+-sym53c8xx
+-vx855
+-vxge

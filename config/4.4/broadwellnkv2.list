@@ -2,8 +2,32 @@
 # yet DSM ships its own build: arc-dsm modules/<model>/<ver>/), that the
 # installer does not need, plus what only they use. DSM loads its own.
 -drbd
+-iw_cm
 -lru_cache
 -rdma_cm
 -rdma_ucm
 -vhost
 -vhost_net
+
+# Hardware no DSM box has (Neterion, Intel 82597, Solarflare Falcon, USB 1.1
+# rtl8150, NCR/Symbios and ESP SCSI, SoundBlaster Live, Atom tablet audio,
+# powerline and switch chips, VIA chipset, VGA16), plus what only it uses.
+-ac97_bus
+-am53c974
+-esp_scsi
+-ixgb
+-qcaspi
+-rtl8150
+-s2io
+-snd-ac97-codec
+-snd-emu10k1
+-snd-emu10k1-synth
+-snd-emu10k1x
+-snd-emux-synth
+-snd-seq-midi-emul
+-snd-seq-virmidi
+-snd-util-mem
+-sym53c8xx
+-vga16fb
+-vgastate
+-vxge
